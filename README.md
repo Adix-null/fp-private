@@ -1,11 +1,15 @@
-# fp-2025
+BNF for the filesystem
 
-## Setup
+<file> ::= <name> "#" <data>
+<folder> ::= <alphanumstr> " -> [\n" (<filerec> | <folderrec>) "\n]\n"
 
-### To get started, you first need to open the project using Visual Studio Code and having Docker Desktop
-1. `Ctrl + Shift + P`
-2. `Dev Containers: Open Folder in Container`
+<folderrec> ::= <folder> | <folderrec> <folder>
+<filerec> ::= "null" | <file> | <filerec> "\t" <file>
 
-### To Build & Test the Project, run the following commands
-1. `stack build`
-2. `stack test`
+<name> ::= <alphanumstr> "." <extension>
+<alphanumstr> ::= <azAZ09> | <azAZ09> <alphanumstr>
+<extension> ::= "txt" | "png" | "jpg" | "json" | "dat" | "exe" | "hs" | "cs" | "html" | "cpp" | "mp4" | "mp3"
+<azAZ09> ::= [a-z] | [A-Z] | [0-9]
+<symbols> ::=  "\t" | "!" | "\"" | "$" | "%" | "&" | "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | "/" | ":" | ";" | "<" | "=" | ">" | "?" | "@" | "\\" | "^" | "_" | "`" | "{" | "|" | "}" | "~" 
+<ascii> ::= <azAZ09> | <symbols>
+<data> ::= <ascii> | <data> <ascii>

@@ -13,7 +13,7 @@ data Dumpable = Examples
 -- The basic structure
 data FS
   = File String String String -- name, ext, data
-  | Folder String [FS] -- name, data rec
+  | Folder String FS -- name, data rec
   deriving (Show, Eq)
 
 data Command
@@ -62,11 +62,11 @@ printFS fs = fs
 examples :: [Command]
 examples =
   [ Dump Examples,
-    AddFile ["/"] "file1" "txt" "Data of file",
-    DeleteFile ["/"] "file1" "txt",
-    AddFolder ["/"] "folder1",
-    DeleteFolder ["/", "folder1"],
-    MoveFile ["/"] ["folder1"] "file1" "txt",
-    MoveFolder ["/", "folder1"] ["/"],
+    AddFile ["r/f"] "file1" "txt" "Data of file",
+    DeleteFile ["r/f"] "file1" "txt",
+    AddFolder ["r/f"] "folder1",
+    DeleteFolder ["r/f", "folder1"],
+    MoveFile ["r/f"] ["folder1"] "file1" "txt",
+    MoveFolder ["r/f", "folder1"] ["r/f"],
     PrintFS
   ]

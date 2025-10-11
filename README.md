@@ -13,3 +13,13 @@ BNF for the filesystem
 <symbols> ::=  "\t" | "!" | "\"" | "$" | "%" | "&" | "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | "/" | ":" | ";" | "<" | "=" | ">" | "?" | "@" | "\\" | "^" | "_" | "`" | "{" | "|" | "}" | "~" 
 <ascii> ::= <azAZ09> | <symbols>
 <data> ::= <ascii> | <data> <ascii>
+
+<command> ::= <AddFile> | <DeleteFile> | <AddFolder> | <DeleteFolder> | <MoveFolder> | <MoveFile> | <PrintFS>
+<path> ::= <alphanumstr> | <alphanumstr> "/" <path>
+<AddFile> ::= "AddFile " <path> " " <file>
+<DeleteFile> ::= "DeleteFile " <path> " " <name>
+<AddFolder> ::= "AddFolder " <path> " " <alphanumstr>
+<DeleteFolder> ::= "DeleteFolder " <path>
+<MoveFolder> ::= "MoveFolder " <path> " " <path>
+<MoveFile> ::= "MoveFile " <path> " " <path> " " <name>
+<PrintFS> ::= "PrintFS "

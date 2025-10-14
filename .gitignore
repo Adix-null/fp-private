@@ -1,3 +1,5 @@
 .stack-work/
 *~
 .devcontainer/.history
+.history
+src/.history

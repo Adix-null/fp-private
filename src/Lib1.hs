@@ -26,5 +26,5 @@ data Command
 examples :: [Command]
 examples =
   [ Dump Examples,
-    EditFile "abcd"
+    EditFile "test.txt"
   ]

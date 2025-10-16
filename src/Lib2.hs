@@ -113,6 +113,8 @@ parseEditFile input =
         then Right (Lib1.EditFile fname, rest)
         else Left $ "Bad extension name " ++ rest
 
+-- | Parses user's input.
+-- The function must be implemented and must have tests.
 parseCommand :: Parser ErrorMsg Lib1.Command
 parseCommand = parseEditFile
 
@@ -124,12 +126,16 @@ process c = ["Parsed as " ++ show c]
 class ToCliCommand a where
   toCliCommand :: a -> String
 
+-- | You have to make your Command an instance of ToCliCommand class.
+-- Please remove all custom Show instances of Command ADT and
+-- use "deriving Show" only.
 instance ToCliCommand Lib1.Command where
   toCliCommand :: Lib1.Command -> String
   toCliCommand (Lib1.EditFile fname) = "EditFile " ++ fname
   toCliCommand (Lib1.Dump d) = "Dump " ++ show d
 
--- Eq instance
+-- | You have to make your Command an instance of Eq class.
+-- Usage of "deriving Eq" is forbidden.
 instance Eq Lib1.Command where
   (==) :: Lib1.Command -> Lib1.Command -> Bool
   Lib1.EditFile f1 == Lib1.EditFile f2 = f1 == f2

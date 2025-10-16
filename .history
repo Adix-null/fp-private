@@ -1,3 +1,25 @@
+EditFile wdsb$.txt
+EditFile test1.txt
+EditFile kmon21.txt
+EditFile bbzė.txt
+EditFile bbzė.txt
+EditFile bbz4.txt
+EditFile testas.c
+EditFile testas.css
+EditFile testas.bbz
+EditFile testtt
+EditFile testas.txt
+EditFile test.css
+EditFile test.txt
+EditFile test
+EditFIle test3.txt
+EditFile test2
+EditFile nudv.ruby
+print EditFile noway.txt
+EditFile noway3.tyxt
+EditFile noway$#$@.wdf
+EditFile noway.txt
+Dump Examples
 AddFolder "" 
 AddFolder "" "sdf"
 /dump examples

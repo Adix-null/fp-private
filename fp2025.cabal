@@ -28,6 +28,7 @@ library
       Lessons.Lesson02
       Lessons.Lesson03
       Lib1
+      Lib11
       Lib2
   hs-source-dirs:
       src

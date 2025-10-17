@@ -8,7 +8,7 @@ module Lib2
   )
 where
 
-import Data.Char (isAlpha, isDigit)
+import Data.Char (isAlpha, isDigit, toLower, toUpper)
 import Data.Foldable
 import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
 import Data.Monoid
@@ -92,7 +92,6 @@ ws = pmap concat (many1 (keyword " " `orElse` keyword "\t"))
 parseAlphaNumStr :: Parser ErrorMsg String
 parseAlphaNumStr = many1 parseAlphaNum
 
---
 parseOneOf :: [String] -> Parser ErrorMsg String
 parseOneOf exts = foldr1 orElse (map keyword exts)
 
@@ -104,23 +103,29 @@ parseFilename =
   pmap (\(name, _dot, ext) -> name ++ "." ++ ext) $
     and3 parseAlphaNumStr (keyword ".") parseExt
 
-parseEditFile :: Parser ErrorMsg Lib1.Command
-parseEditFile input =
-  case and3 (keyword "EditFile") ws parseFilename input of
-    Left e -> Left e
-    Right ((_, _, fname), rest) ->
-      if null rest
-        then Right (Lib1.EditFile fname, rest)
-        else Left $ "Bad extension name " ++ rest
+-- parseEditFile :: Parser ErrorMsg Lib1.Command
+-- parseEditFile input =
+--   case and3 (keyword "EditFile") ws parseFilename input of
+--     Left e -> Left e
+--     Right ((_, _, fname), rest) ->
+--       if null rest
+--         then Right (Lib1.EditFile fname, rest)
+--         else Left $ "Bad extension name " ++ rest
 
 -- | Parses user's input.
 -- The function must be implemented and must have tests.
 parseCommand :: Parser ErrorMsg Lib1.Command
-parseCommand = parseEditFile
+-- parseCommand = parseEditFile
 
 process :: Lib1.Command -> [String]
 process (Lib1.Dump Lib1.Examples) = "EXAMPLES:" : map toCliCommand Lib1.examples
-process (Lib1.EditFile "test.txt") = ["EXAMPLE EDIT: test.txt"]
+-- process (Lib1.EditFile "test.txt") = ["EXAMPLE EDIT: test.txt"]
+process (Lib1.AddFile "path/from" "filedata") = "Example AddFile: " : map toCliCommand "path/from filedata"
+process (Lib1.MoveFile "path/from" "path/to" "filename") = "Example MoveFile: " : map toCliCommand "path/from path/to filename"
+process (Lib1.DeleteFile "path/from" "filename") = "Example DeleteFile: " : map toCliCommand "path/from filename"
+process (Lib1.AddFolder "path/from" "foldername") = "Example AddFolder: " : map toCliCommand "path/from foldername"
+process (Lib1.MoveFolder "path/from" "path/to") = "Example MoveFolder: " : map toCliCommand "path/from path/to"
+process (Lib1.DeleteFolder "path/from") = "Example DeleteFolder: " : map toCliCommand "path/from"
 process c = ["Parsed as " ++ show c]
 
 class ToCliCommand a where
@@ -131,12 +136,25 @@ class ToCliCommand a where
 -- use "deriving Show" only.
 instance ToCliCommand Lib1.Command where
   toCliCommand :: Lib1.Command -> String
-  toCliCommand (Lib1.EditFile fname) = "EditFile " ++ fname
+  -- toCliCommand (Lib1.EditFile fname) = "EditFile " ++ fname
+  toCliCommand (Lib1.AddFile pf d) = "AddFile " ++ pf ++ " " ++ d
+  toCliCommand (Lib1.MoveFile pf pt fln) = "MoveFile " ++ pf ++ " " ++ pt ++ " " ++ fln
+  toCliCommand (Lib1.DeleteFile pf fln) = "DeleteFile " ++ pf ++ " " ++ fln
+  toCliCommand (Lib1.AddFolder pf fdn) = "AddFile " ++ pf ++ " " ++ fdn
+  toCliCommand (Lib1.MoveFolder pf pt) = "MoveFile " ++ pf ++ " " ++ pt ++ " "
+  toCliCommand (Lib1.DeleteFolder pf) = "DeleteFile " ++ pf
   toCliCommand (Lib1.Dump d) = "Dump " ++ show d
 
 -- | You have to make your Command an instance of Eq class.
 -- Usage of "deriving Eq" is forbidden.
 instance Eq Lib1.Command where
   (==) :: Lib1.Command -> Lib1.Command -> Bool
-  Lib1.EditFile f1 == Lib1.EditFile f2 = f1 == f2
+  -- Lib1.EditFile f1 == Lib1.EditFile f2 = f1 == f2
+  Lib1.AddFile pf1 d1 == Lib1.AddFile pf2 d2 = pf1 == pf2 && d1 == d2
+  Lib1.MoveFile pf1 pt1 fln1 == Lib1.MoveFile pf2 pt2 fln2 = pf1 == pf2 && pt1 == pt2 && fln1 == fln2
+  Lib1.DeleteFile pf1 fln1 == Lib1.DeleteFile pf2 fln2 = pf1 == pf2 && fln1 == fln2
+  Lib1.AddFolder pf1 fdn1 == Lib1.AddFolder pf2 fdn2 = pf1 == pf2 && fdn1 == fdn2
+  Lib1.MoveFolder pf1 pt1 == Lib1.MoveFolder pf2 pt2 = pf1 == pf2 && pt1 == pt2
+  Lib1.DeleteFolder pf1 == Lib1.DeleteFolder pf2 = pf1 == pf2
+  Lib1.Dump d1 == Lib1.Dump d2 = d1 == d2
   _ == _ = False

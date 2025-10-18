@@ -16,12 +16,6 @@ module Lib1
     ASCII (..),
     Data (..),
     Path (..),
-    AddFile (..),
-    MoveFile (..),
-    DeleteFile (..),
-    AddFolder (..),
-    MoveFolder (..),
-    DeleteFolder (..),
     stringToAlphanumStr,
     stringToPath,
   )
@@ -155,43 +149,13 @@ data Path
 -- <command> ::= <AddFile> | <MoveFile> | <DeleteFile> | <AddFolder> | <MoveFolder> | <DeleteFolder>
 data Command
   = Dump Dumpable
-  | AddFile AddFile
-  | MoveFile MoveFile
-  | DeleteFile DeleteFile
-  | AddFolder AddFolder
-  | MoveFolder MoveFolder
-  | DeleteFolder DeleteFolder
+  | AddFile Path File -- <AddFile> ::= "AddFile " <path> " " <file>
+  | MoveFile Path Path Name -- <MoveFile> ::= "MoveFile " <path> " " <path> " " <name>
+  | DeleteFile Path Name -- <DeleteFile> ::= "DeleteFile " <path> " " <name>
+  | AddFolder Path AlphanumStr -- <AddFolder> ::= "AddFolder " <path> " " <alphanumstr>
+  | MoveFolder Path Path -- <MoveFolder> ::= "MoveFolder " <path> " " <path>
+  | DeleteFolder Path -- <DeleteFolder> ::= "DeleteFolder " <path>
   deriving (Show)
-
--- <AddFile> ::= "AddFile " <path> " " <file>
-data AddFile
-  = AddFileC Path File
-  deriving (Show, Eq)
-
--- <MoveFile> ::= "MoveFile " <path> " " <path> " " <name>
-data MoveFile
-  = MoveFileC Path Path Name
-  deriving (Show, Eq)
-
--- <DeleteFile> ::= "DeleteFile " <path> " " <name>
-data DeleteFile
-  = DeleteFileC Path Name
-  deriving (Show, Eq)
-
--- <AddFolder> ::= "AddFolder " <path> " " <alphanumstr>
-data AddFolder
-  = AddFolderC Path AlphanumStr
-  deriving (Show, Eq)
-
--- <MoveFolder> ::= "MoveFolder " <path> " " <path>
-data MoveFolder
-  = MoveFolderC Path Path
-  deriving (Show, Eq)
-
--- <DeleteFolder> ::= "DeleteFolder " <path>
-data DeleteFolder
-  = DeleteFolderC Path
-  deriving (Show, Eq)
 
 stringToAlphanumStr :: String -> AlphanumStr
 stringToAlphanumStr ch =
@@ -230,10 +194,10 @@ stringToPath s =
 examples :: [Command]
 examples =
   [ Dump Examples,
-    AddFile (AddFileC (stringToPath "a/b/c") (File (Name (stringToAlphanumStr "WS") Exe) (RecASCII (ASCII (Upper 'P') SymExclam) (SingleASCII (ASCII (Upper 'x') SymTab))))),
-    MoveFile (MoveFileC (stringToPath "0/YC") (stringToPath "RV/c9") (Name (stringToAlphanumStr "3") Html)),
-    DeleteFile (DeleteFileC (stringToPath "path/from") (Name (stringToAlphanumStr "3m") Txt)),
-    AddFolder (AddFolderC (stringToPath "x/y/z") (stringToAlphanumStr "Fold9Name")),
-    MoveFolder (MoveFolderC (stringToPath "path/from") (stringToPath "f1/f2")),
-    DeleteFolder (DeleteFolderC $ stringToPath "path/from")
+    AddFile (stringToPath "a/b/c") (File (Name (stringToAlphanumStr "WS") Exe) (RecASCII (ASCII (Upper 'P') SymExclam) (SingleASCII (ASCII (Upper 'x') SymTab)))),
+    MoveFile (stringToPath "0/YC") (stringToPath "RV/c9") (Name (stringToAlphanumStr "3") Html),
+    DeleteFile (stringToPath "path/from") (Name (stringToAlphanumStr "3m") Txt),
+    AddFolder (stringToPath "x/y/z") (stringToAlphanumStr "Fold9Name"),
+    MoveFolder (stringToPath "path/from") (stringToPath "f1/f2"),
+    DeleteFolder (stringToPath "path/from")
   ]

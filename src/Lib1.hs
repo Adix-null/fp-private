@@ -22,7 +22,6 @@ module Lib1
 where
 
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
-import GHC.Generics (D)
 
 data Dumpable = Examples
   deriving (Show)
@@ -96,7 +95,7 @@ data Extension
   | Mp3
   deriving (Show, Eq)
 
--- <symbol> ::=  "\t" | "!" | "\"" | "$" | "%" | "&" | "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | ":" | ";" | "<" | "=" | ">" | "?" | "@" | "\\" | "^" | "_" | "`" | "{" | "|" | "}" | "~"
+-- <symbol> ::= "!" | "\"" | "$" | "%" | "&" | "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | ":" | ";" | "<" | "=" | ">" | "?" | "@" | "\\" | "^" | "_" | "`" | "{" | "|" | "}" | "~"
 data Symbol
   = SymTab
   | SymExclam

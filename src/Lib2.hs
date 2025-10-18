@@ -8,7 +8,7 @@ module Lib2
   )
 where
 
-import Data.Char (isAlpha, isDigit, toLower, toUpper)
+import Data.Char (isAlpha, isDigit, isLower, isUpper, toLower, toUpper)
 import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
 import qualified Lib1
 
@@ -101,44 +101,244 @@ parseFilename =
   pmap (\(name, _dot, ext) -> name ++ "." ++ ext) $
     and3 parseAlphaNumStr (keyword ".") parseExt
 
--- parseAddFile :: Parser Lib1.Command
--- parseAddFile =
+parseAddFile :: Parser Lib1.Command
+parseAddFile input =
+  case keyword "AddFile" input of
+    Left e -> Left e
+    Right (_, rest) ->
+      case ws rest of
+        Left _ -> Left "Expected whitespace after AddFile"
+        Right (_, afterWs1) ->
+          case parsePath afterWs1 of
+            Left err -> Left err
+            Right (path, rest1) ->
+              case ws rest1 of
+                Left _ -> Left "Expected whitespace after path"
+                Right (_, afterWs2) ->
+                  let (fnameStr, dataStrWithHash) = break (== '#') afterWs2 -- name#data
+                   in case dataStrWithHash of
+                        '#' : dataStr ->
+                          case parseName fnameStr of
+                            Left err -> Left err
+                            Right (name, _) ->
+                              case parseData dataStr of
+                                Left err -> Left err
+                                Right (dat, remaining) -> Right (Lib1.AddFile path (Lib1.File name dat), remaining)
+                        _ -> Left "Expected #"
 
--- parseMoveFile :: Parser Lib1.Command
--- parseAddFile =
+parseMoveFile :: Parser Lib1.Command
+parseMoveFile input =
+  case keyword "MoveFile" input of
+    Left e -> Left e
+    Right (_, rest) ->
+      case ws rest of
+        Left _ -> Left "Expected whitespace after MoveFile"
+        Right (_, afterWs1) ->
+          case parsePath afterWs1 of
+            Left e -> Left e
+            Right (fromPath, rest1) ->
+              case ws rest1 of
+                Left _ -> Left "Expected whitespace after path_from"
+                Right (_, afterWs2) ->
+                  case parsePath afterWs2 of
+                    Left e -> Left e
+                    Right (toPath, rest2) ->
+                      case ws rest2 of
+                        Left _ -> Left "Expected whitespace after path_to"
+                        Right (_, afterWs3) ->
+                          case parseName afterWs3 of
+                            Left err -> Left err
+                            Right (fname, remaining) -> Right (Lib1.MoveFile fromPath toPath fname, remaining)
 
--- parseDeleteFile :: Parser Lib1.Command
--- parseDeleteFile =
+parseDeleteFile :: Parser Lib1.Command
+parseDeleteFile input =
+  case keyword "DeleteFile" input of
+    Left e -> Left e
+    Right (_, rest) ->
+      case ws rest of
+        Left _ -> Left "Expected whitespace after DeleteFile"
+        Right (_, afterWs1) ->
+          case parsePath afterWs1 of
+            Left e -> Left e
+            Right (path, rest1) ->
+              case ws rest1 of
+                Left _ -> Left "Expected whitespace after path"
+                Right (_, afterWs2) ->
+                  case parseName afterWs2 of
+                    Left err -> Left err
+                    Right (fname, remaining) ->
+                      Right (Lib1.DeleteFile path fname, remaining)
 
--- parseAddFolder :: Parser Lib1.Command
--- parseAddFolder =
+parseAddFolder :: Parser Lib1.Command
+parseAddFolder input =
+  case keyword "AddFolder" input of
+    Left e -> Left e
+    Right (_, rest) ->
+      case ws rest of
+        Left _ -> Left "Expected whitespace after AddFolder"
+        Right (_, afterWs1) ->
+          case parsePath afterWs1 of
+            Left e -> Left e
+            Right (path, rest1) ->
+              case ws rest1 of
+                Left _ -> Left "Expected whitespace after path"
+                Right (_, afterWs2) ->
+                  case parseAlphaNumStr afterWs2 of
+                    Left err -> Left err
+                    Right (folderNameStr, remaining) ->
+                      let folderName = Lib1.stringToAlphanumStr folderNameStr
+                       in Right (Lib1.AddFolder path folderName, remaining)
 
--- parseMoveFolder :: Parser Lib1.Command
--- parseMoveFolder =
+parseMoveFolder :: Parser Lib1.Command
+parseMoveFolder input =
+  case keyword "MoveFolder" input of
+    Left e -> Left e
+    Right (_, rest) ->
+      case ws rest of
+        Left _ -> Left "Expected whitespace after MoveFolder"
+        Right (_, afterWs1) ->
+          case parsePath afterWs1 of
+            Left e -> Left e
+            Right (fromPath, rest1) ->
+              case ws rest1 of
+                Left _ -> Left "Expected whitespace after path_from"
+                Right (_, afterWs2) ->
+                  case parsePath afterWs2 of
+                    Left e -> Left e
+                    Right (toPath, remaining) ->
+                      Right (Lib1.MoveFolder fromPath toPath, remaining)
 
--- parseDeleteFolder :: Parser Lib1.Command
--- parseDeleteFolder =
+parseDeleteFolder :: Parser Lib1.Command
+parseDeleteFolder input =
+  case keyword "DeleteFolder" input of
+    Left e -> Left e
+    Right (_, rest) ->
+      case ws rest of
+        Left _ -> Left "Expected whitespace after DeleteFolder"
+        Right (_, afterWs) ->
+          case parsePath afterWs of
+            Left e -> Left e
+            Right (path, remaining) -> Right (Lib1.DeleteFolder path, remaining)
+
+-- helper parsers
+parsePath :: Parser Lib1.Path
+parsePath input =
+  case parseAlphaNumStr input of
+    Left e -> Left e
+    Right (seg, rest) ->
+      let alphanum = Lib1.stringToAlphanumStr seg
+       in case rest of
+            ('/' : r) ->
+              case parsePath r of
+                Left e2 -> Left e2
+                Right (p, remaining) -> Right (Lib1.RecPath alphanum p, remaining)
+            _ -> Right (Lib1.SinglePath alphanum, rest) -- when end of path reached
+
+parseName :: Parser Lib1.Name
+parseName input =
+  case parseFilename input of
+    Left e -> Left e
+    Right (fnameStr, remaining) ->
+      let (namePart, _dotExt) = break (== '.') fnameStr
+          extPart = drop 1 _dotExt
+          nameADT =
+            Lib1.Name
+              (Lib1.stringToAlphanumStr namePart)
+              ( case extPart of
+                  "txt" -> Lib1.Txt
+                  "png" -> Lib1.Png
+                  "jpg" -> Lib1.Jpg
+                  "json" -> Lib1.Json
+                  "dat" -> Lib1.Dat
+                  "exe" -> Lib1.Exe
+                  "hs" -> Lib1.Hs
+                  "cs" -> Lib1.Cs
+                  "html" -> Lib1.Html
+                  "cpp" -> Lib1.Cpp
+                  "mp4" -> Lib1.Mp4
+                  "mp3" -> Lib1.Mp3
+                  _ -> error "unknown extension"
+              )
+       in Right (nameADT, remaining)
+
+parseSymbol :: Parser Lib1.Symbol
+parseSymbol [] = Left "Expected symbol but got empty input"
+parseSymbol (c : cs) =
+  case c of
+    '\t' -> Left "tab not allowed"
+    '\n' -> Left "newline not allowed"
+    '#' -> Left "# not allowed"
+    '!' -> Right (Lib1.SymExclam, cs)
+    '"' -> Right (Lib1.SymQuote, cs)
+    '$' -> Right (Lib1.SymDollar, cs)
+    '%' -> Right (Lib1.SymPercent, cs)
+    '&' -> Right (Lib1.SymAmpersand, cs)
+    '\'' -> Right (Lib1.SymApostrophe, cs)
+    '(' -> Right (Lib1.SymLParen, cs)
+    ')' -> Right (Lib1.SymRParen, cs)
+    '*' -> Right (Lib1.SymAsterisk, cs)
+    '+' -> Right (Lib1.SymPlus, cs)
+    ',' -> Right (Lib1.SymComma, cs)
+    '-' -> Right (Lib1.SymMinus, cs)
+    '.' -> Right (Lib1.SymDot, cs)
+    ':' -> Right (Lib1.SymColon, cs)
+    ';' -> Right (Lib1.SymSemicolon, cs)
+    '<' -> Right (Lib1.SymLt, cs)
+    '=' -> Right (Lib1.SymEq, cs)
+    '>' -> Right (Lib1.SymGt, cs)
+    '?' -> Right (Lib1.SymQMark, cs)
+    '@' -> Right (Lib1.SymAt, cs)
+    '\\' -> Right (Lib1.SymBackslash, cs)
+    '^' -> Right (Lib1.SymCaret, cs)
+    '_' -> Right (Lib1.SymUnderscore, cs)
+    '`' -> Right (Lib1.SymBacktick, cs)
+    '{' -> Right (Lib1.SymLCurly, cs)
+    '|' -> Right (Lib1.SymPipe, cs)
+    '}' -> Right (Lib1.SymRCurly, cs)
+    '~' -> Right (Lib1.SymTilde, cs)
+    _ -> Left $ "Invalid symbol: " ++ [c]
+
+parseASCII :: Parser Lib1.ASCII
+parseASCII input =
+  case parseAlphaNum input of
+    Right (c, rest) ->
+      let az
+            | isLower c = Lib1.Lower c
+            | isUpper c = Lib1.Upper c
+            | otherwise = Lib1.Digit c
+       in Right (Lib1.ASCII az Lib1.SymTab, rest) -- alphanum with dummy SymTab
+    Left _ ->
+      case parseSymbol input of
+        Right (sym, rest) -> Right (Lib1.ASCII (Lib1.Digit '0') sym, rest) -- symbol with dummy AzAZ09
+        Left e -> Left e
+
+parseData :: Parser Lib1.Data
+parseData input =
+  case parseASCII input of
+    Left e -> Left e
+    Right (ascii, rest) ->
+      case parseData rest of
+        Left _ -> Right (Lib1.SingleASCII ascii, rest) -- end of data
+        Right (d, remaining) -> Right (Lib1.RecASCII ascii d, remaining)
+
+parseNotImplemented :: Parser Lib1.Command
+parseNotImplemented _ = Left "Not implemented"
 
 -- | Parses user's input.
 -- The function must be implemented and must have tests.
--- parseCommand =
+parseCommand :: Parser Lib1.Command
+parseCommand = parseAddFile `orElse` parseMoveFile `orElse` parseDeleteFile `orElse` parseAddFolder `orElse` parseMoveFolder `orElse` parseDeleteFolder `orElse` parseNotImplemented
+
 -- parseAddFile
 -- `orElse` parseMoveFile
 -- `orElse` parseDeleteFile
 -- `orElse` parseAddFolder
 -- `orElse` parseMoveFolder
 -- `orElse` parseDeleteFolder
-parseCommand :: Parser Lib1.Command
-parseCommand _ = Left "Not implemented"
+-- parseCommand _ = Left "Not implemented"
 
 process :: Lib1.Command -> [String]
 process (Lib1.Dump Lib1.Examples) = "EXAMPLES:" : map toCliCommand Lib1.examples
-process (Lib1.AddFile path file) = "Example AddFile: " : [toCliCommand (Lib1.AddFile path file)]
-process (Lib1.MoveFile from to fname) = "Example MoveFile: " : [toCliCommand (Lib1.MoveFile from to fname)]
-process (Lib1.DeleteFile path fname) = "Example DeleteFile: " : [toCliCommand (Lib1.DeleteFile path fname)]
-process (Lib1.AddFolder path folderName) = "Example AddFolder: " : [toCliCommand (Lib1.AddFolder path folderName)]
-process (Lib1.MoveFolder from to) = "Example MoveFolder: " : [toCliCommand (Lib1.MoveFolder from to)]
-process (Lib1.DeleteFolder path) = "Example DeleteFolder: " : [toCliCommand (Lib1.DeleteFolder path)]
 process c = ["Parsed as " ++ show c]
 
 class ToCliCommand a where

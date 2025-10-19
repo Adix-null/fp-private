@@ -238,6 +238,10 @@ parseData input =
         Left _ -> Right (Lib1.SingleASCII ascii, rest) -- end of data
         Right (d, remaining) -> Right (Lib1.RecASCII ascii d, remaining)
 
+parseDumpable :: Parser Lib1.Dumpable
+parseDumpable =
+  pmap (const Lib1.Examples) (keyword "Examples")
+
 -- user command parsers
 parseAddFile :: Parser Lib1.Command
 parseAddFile =
@@ -286,6 +290,12 @@ parseDeleteFolder =
     )
     (and3 (keyword "DeleteFolder") ws parsePath)
 
+parseDump :: Parser Lib1.Command
+parseDump =
+  pmap
+    (\(_, _, dumpable) -> Lib1.Dump dumpable)
+    (and3 (keyword "Dump") ws parseDumpable)
+
 requireEnd :: Parser a -> Parser a
 requireEnd p input =
   case p input of
@@ -301,7 +311,17 @@ parseNotImplemented _ = Left "Not implemented"
 -- | Parses user's input.
 -- The function must be implemented and must have tests.
 parseCommand :: Parser Lib1.Command
-parseCommand = requireEnd (parseAddFile `orElse` parseMoveFile `orElse` parseDeleteFile `orElse` parseAddFolder `orElse` parseMoveFolder `orElse` parseDeleteFolder `orElse` parseNotImplemented)
+parseCommand =
+  requireEnd
+    ( parseAddFile
+        `orElse` parseMoveFile
+        `orElse` parseDeleteFile
+        `orElse` parseAddFolder
+        `orElse` parseMoveFolder
+        `orElse` parseDeleteFolder
+        `orElse` parseDump
+        `orElse` parseNotImplemented
+    )
 
 process :: Lib1.Command -> [String]
 process (Lib1.Dump Lib1.Examples) = "EXAMPLES:" : map toCliCommand Lib1.examples

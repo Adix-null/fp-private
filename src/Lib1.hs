@@ -16,6 +16,7 @@ module Lib1
     ASCII (..),
     Data (..),
     Path (..),
+    extensions,
     stringToAlphanumStr,
     stringToPath,
   )
@@ -80,6 +81,21 @@ data AzAZ09
   deriving (Show, Eq)
 
 -- <extension> ::= "txt" | "png" | "jpg" | "json" | "dat" | "exe" | "hs" | "cs" | "html" | "cpp" | "mp4" | "mp3"
+-- data Extension
+--   = Txt
+--   | Png
+--   | Jpg
+--   | Json
+--   | Dat
+--   | Exe
+--   | Hs
+--   | Cs
+--   | Html
+--   | Cpp
+--   | Mp4
+--   | Mp3
+--   deriving (Show, Eq)
+
 data Extension
   = Txt
   | Png
@@ -94,6 +110,22 @@ data Extension
   | Mp4
   | Mp3
   deriving (Show, Eq)
+
+extensions :: [(String, Extension)]
+extensions =
+  [ ("txt", Txt),
+    ("png", Png),
+    ("jpg", Jpg),
+    ("json", Json),
+    ("dat", Dat),
+    ("exe", Exe),
+    ("hs", Hs),
+    ("cs", Cs),
+    ("html", Html),
+    ("cpp", Cpp),
+    ("mp4", Mp4),
+    ("mp3", Mp3)
+  ]
 
 -- <symbol> ::= "!" | "\"" | "$" | "%" | "&" | "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | ":" | ";" | "<" | "=" | ">" | "?" | "@" | "\\" | "^" | "_" | "`" | "{" | "|" | "}" | "~"
 data Symbol

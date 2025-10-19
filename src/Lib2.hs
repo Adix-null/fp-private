@@ -8,8 +8,8 @@ module Lib2
   )
 where
 
-import Data.Char (isAlpha, isDigit, isLower, isUpper, toLower, toUpper)
-import Data.List (isPrefixOf, isSuffixOf, stripPrefix)
+import Data.Char (isAlpha, isDigit, isLower, isUpper)
+import Data.List (isPrefixOf)
 import qualified Lib1
 
 type ErrorMsg = String
@@ -92,14 +92,6 @@ parseAlphaNumStr = many1 parseAlphaNum
 
 parseOneOf :: [String] -> Parser String
 parseOneOf exts = foldr1 orElse (map keyword exts)
-
-parseExt :: Parser String
-parseExt = parseOneOf ["txt", "png", "jpg", "json", "dat", "exe", "hs", "cs", "html", "cpp", "mp4", "mp3"]
-
-parseFilename :: Parser String
-parseFilename =
-  pmap (\(name, _dot, ext) -> name ++ "." ++ ext) $
-    and3 parseAlphaNumStr (keyword ".") parseExt
 
 parseAddFile :: Parser Lib1.Command
 parseAddFile input =
@@ -234,32 +226,21 @@ parsePath input =
                 Right (p, remaining) -> Right (Lib1.RecPath alphanum p, remaining)
             _ -> Right (Lib1.SinglePath alphanum, rest) -- when end of path reached
 
+parseExtension :: Parser Lib1.Extension
+parseExtension =
+  pmap toExt (parseOneOf (map fst Lib1.extensions))
+  where
+    toExt :: String -> Lib1.Extension
+    toExt s = case lookup s Lib1.extensions of
+      Just ext -> ext
+      Nothing -> error $ "Impossible: extension not in list: " ++ s
+
 parseName :: Parser Lib1.Name
 parseName input =
-  case parseFilename input of
+  case and3 parseAlphaNumStr (keyword ".") parseExtension input of
     Left e -> Left e
-    Right (fnameStr, remaining) ->
-      let (namePart, _dotExt) = break (== '.') fnameStr
-          extPart = drop 1 _dotExt
-          nameADT =
-            Lib1.Name
-              (Lib1.stringToAlphanumStr namePart)
-              ( case extPart of
-                  "txt" -> Lib1.Txt
-                  "png" -> Lib1.Png
-                  "jpg" -> Lib1.Jpg
-                  "json" -> Lib1.Json
-                  "dat" -> Lib1.Dat
-                  "exe" -> Lib1.Exe
-                  "hs" -> Lib1.Hs
-                  "cs" -> Lib1.Cs
-                  "html" -> Lib1.Html
-                  "cpp" -> Lib1.Cpp
-                  "mp4" -> Lib1.Mp4
-                  "mp3" -> Lib1.Mp3
-                  _ -> error "unknown extension"
-              )
-       in Right (nameADT, remaining)
+    Right ((nameStr, _, ext), remaining) ->
+      Right (Lib1.Name (Lib1.stringToAlphanumStr nameStr) ext, remaining)
 
 parseSymbol :: Parser Lib1.Symbol
 parseSymbol [] = Left "Expected symbol but got empty input"
@@ -321,21 +302,22 @@ parseData input =
         Left _ -> Right (Lib1.SingleASCII ascii, rest) -- end of data
         Right (d, remaining) -> Right (Lib1.RecASCII ascii d, remaining)
 
+requireEnd :: Parser a -> Parser a
+requireEnd p input =
+  case p input of
+    Left e -> Left e
+    Right (result, rest) ->
+      case dropWhile (== ' ') rest of
+        "" -> Right (result, "")
+        leftover -> Left $ "Unexpected input after command: " ++ show leftover
+
 parseNotImplemented :: Parser Lib1.Command
 parseNotImplemented _ = Left "Not implemented"
 
 -- | Parses user's input.
 -- The function must be implemented and must have tests.
 parseCommand :: Parser Lib1.Command
-parseCommand = parseAddFile `orElse` parseMoveFile `orElse` parseDeleteFile `orElse` parseAddFolder `orElse` parseMoveFolder `orElse` parseDeleteFolder `orElse` parseNotImplemented
-
--- parseAddFile
--- `orElse` parseMoveFile
--- `orElse` parseDeleteFile
--- `orElse` parseAddFolder
--- `orElse` parseMoveFolder
--- `orElse` parseDeleteFolder
--- parseCommand _ = Left "Not implemented"
+parseCommand = requireEnd (parseAddFile `orElse` parseMoveFile `orElse` parseDeleteFile `orElse` parseAddFolder `orElse` parseMoveFolder `orElse` parseDeleteFolder `orElse` parseNotImplemented)
 
 process :: Lib1.Command -> [String]
 process (Lib1.Dump Lib1.Examples) = "EXAMPLES:" : map toCliCommand Lib1.examples

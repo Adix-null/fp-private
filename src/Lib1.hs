@@ -25,7 +25,7 @@ where
 import Data.Char (isAsciiLower, isAsciiUpper, isDigit)
 
 data Dumpable = Examples
-  deriving (Show)
+  deriving (Show, Eq)
 
 -- <FS> ::= <filerec> | <folderrec>
 data FS
@@ -94,7 +94,7 @@ data Extension
   | Cpp
   | Mp4
   | Mp3
-  deriving (Show, Eq)
+  deriving (Eq)
 
 extensions :: [(String, Extension)]
 extensions =
@@ -112,10 +112,24 @@ extensions =
     ("mp3", Mp3)
   ]
 
+instance Show Extension where
+  show ext = case ext of
+    Txt -> "txt"
+    Png -> "png"
+    Jpg -> "jpg"
+    Json -> "json"
+    Dat -> "dat"
+    Exe -> "exe"
+    Hs -> "hs"
+    Cs -> "cs"
+    Html -> "html"
+    Cpp -> "cpp"
+    Mp4 -> "mp4"
+    Mp3 -> "mp3"
+
 -- <symbol> ::= "!" | "\"" | "$" | "%" | "&" | "'" | "(" | ")" | "*" | "+" | "," | "-" | "." | ":" | ";" | "<" | "=" | ">" | "?" | "@" | "\\" | "^" | "_" | "`" | "{" | "|" | "}" | "~"
 data Symbol
-  = SymTab
-  | SymExclam
+  = SymExclam
   | SymQuote
   | SymDollar
   | SymPercent
@@ -145,9 +159,10 @@ data Symbol
   | SymTilde
   deriving (Show, Eq)
 
--- <ascii> ::= <azAZ09> | <symbols>
+-- <ascii> ::= <azAZ09> | <symbol>
 data ASCII
-  = ASCII AzAZ09 Symbol
+  = Alphanum AzAZ09
+  | Symbol Symbol
   deriving (Show, Eq)
 
 -- <data> ::= <ascii> | <data> <ascii>
@@ -210,7 +225,9 @@ stringToPath s =
 examples :: [Command]
 examples =
   [ Dump Examples,
-    AddFile (stringToPath "a/b/c") (File (Name (stringToAlphanumStr "WS") Exe) (RecASCII (ASCII (Upper 'P') SymExclam) (SingleASCII (ASCII (Upper 'x') SymTab)))),
+    AddFile
+      (RecPath (Single (Lower 'a')) (SinglePath (Rec (Lower 'b') (Single (Digit '1')))))
+      (File (Name (Rec (Upper 'W') (Single (Upper 'S'))) Exe) (RecASCII (Alphanum (Upper 'X')) (RecASCII (Symbol SymExclam) (SingleASCII (Alphanum (Lower 'p')))))),
     MoveFile (stringToPath "0/YC") (stringToPath "RV/c9") (Name (stringToAlphanumStr "3") Html),
     DeleteFile (stringToPath "path/from") (Name (stringToAlphanumStr "3m") Txt),
     AddFolder (stringToPath "x/y/z") (stringToAlphanumStr "Fold9Name"),

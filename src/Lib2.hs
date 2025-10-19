@@ -8,7 +8,7 @@ module Lib2
   )
 where
 
-import Data.Char (isAlpha, isDigit, isLower, isUpper)
+import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit, isLower, isUpper)
 import Data.List (isPrefixOf)
 import qualified Lib1
 
@@ -174,60 +174,59 @@ parseExtension =
   pmap toExt (parseOneOf (map fst Lib1.extensions))
   where
     toExt :: String -> Lib1.Extension
-    toExt s = case lookup s Lib1.extensions of
-      Just ext -> ext
-      Nothing -> error $ "Impossible: extension not in list: " ++ s
-
-parseSymbol :: Parser Lib1.Symbol
-parseSymbol [] = Left "Expected symbol but got empty input"
-parseSymbol (c : cs) =
-  case c of
-    '\t' -> Left "tab not allowed"
-    '\n' -> Left "newline not allowed"
-    '#' -> Left "# not allowed"
-    '!' -> Right (Lib1.SymExclam, cs)
-    '"' -> Right (Lib1.SymQuote, cs)
-    '$' -> Right (Lib1.SymDollar, cs)
-    '%' -> Right (Lib1.SymPercent, cs)
-    '&' -> Right (Lib1.SymAmpersand, cs)
-    '\'' -> Right (Lib1.SymApostrophe, cs)
-    '(' -> Right (Lib1.SymLParen, cs)
-    ')' -> Right (Lib1.SymRParen, cs)
-    '*' -> Right (Lib1.SymAsterisk, cs)
-    '+' -> Right (Lib1.SymPlus, cs)
-    ',' -> Right (Lib1.SymComma, cs)
-    '-' -> Right (Lib1.SymMinus, cs)
-    '.' -> Right (Lib1.SymDot, cs)
-    ':' -> Right (Lib1.SymColon, cs)
-    ';' -> Right (Lib1.SymSemicolon, cs)
-    '<' -> Right (Lib1.SymLt, cs)
-    '=' -> Right (Lib1.SymEq, cs)
-    '>' -> Right (Lib1.SymGt, cs)
-    '?' -> Right (Lib1.SymQMark, cs)
-    '@' -> Right (Lib1.SymAt, cs)
-    '\\' -> Right (Lib1.SymBackslash, cs)
-    '^' -> Right (Lib1.SymCaret, cs)
-    '_' -> Right (Lib1.SymUnderscore, cs)
-    '`' -> Right (Lib1.SymBacktick, cs)
-    '{' -> Right (Lib1.SymLCurly, cs)
-    '|' -> Right (Lib1.SymPipe, cs)
-    '}' -> Right (Lib1.SymRCurly, cs)
-    '~' -> Right (Lib1.SymTilde, cs)
-    _ -> Left $ "Invalid symbol: " ++ [c]
+    toExt s
+      | all isLower s =
+          case lookup s Lib1.extensions of
+            Just ext -> ext
+            Nothing -> error $ "Ext not in list: " ++ s
+      | otherwise = error $ "Ext must be lowercase: " ++ s
 
 parseASCII :: Parser Lib1.ASCII
 parseASCII input =
-  case parseAlphaNum input of
-    Right (c, rest) ->
-      let az
-            | isLower c = Lib1.Lower c
-            | isUpper c = Lib1.Upper c
-            | otherwise = Lib1.Digit c
-       in Right (Lib1.ASCII az Lib1.SymTab, rest)
-    Left _ ->
-      case parseSymbol input of
-        Right (sym, rest) -> Right (Lib1.ASCII (Lib1.Digit '0') sym, rest) -- parse symbol and give dummy alphanum char
-        Left e -> Left e
+  case input of
+    "" -> Left "Unexpected end of input"
+    (c : cs)
+      | isAzAZ09 c -> Right (Lib1.Alphanum (toAzAZ09 c), cs)
+      | isSymbol c -> Right (Lib1.Symbol (toSymbol c), cs)
+      | otherwise -> Left $ "Unexpected character: " ++ show c
+  where
+    isAzAZ09 ch = isAsciiUpper ch || isAsciiLower ch || isDigit ch
+    toAzAZ09 ch
+      | isAsciiUpper ch = Lib1.Upper ch
+      | isAsciiLower ch = Lib1.Lower ch
+      | isDigit ch = Lib1.Digit ch
+      | otherwise = error "Shouldnt be possible"
+    isSymbol ch = ch `elem` ['!', '"', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', ';', ':', '<', '=', '>', '?', '@', '\\', '^', '_', '`', '{', '|', '}', '~']
+    toSymbol ch = case ch of
+      '!' -> Lib1.SymExclam
+      '"' -> Lib1.SymQuote
+      '$' -> Lib1.SymDollar
+      '%' -> Lib1.SymPercent
+      '&' -> Lib1.SymAmpersand
+      '\'' -> Lib1.SymApostrophe
+      '(' -> Lib1.SymLParen
+      ')' -> Lib1.SymRParen
+      '*' -> Lib1.SymAsterisk
+      '+' -> Lib1.SymPlus
+      ',' -> Lib1.SymComma
+      '-' -> Lib1.SymMinus
+      '.' -> Lib1.SymDot
+      ':' -> Lib1.SymColon
+      ';' -> Lib1.SymSemicolon
+      '<' -> Lib1.SymLt
+      '=' -> Lib1.SymEq
+      '>' -> Lib1.SymGt
+      '?' -> Lib1.SymQMark
+      '@' -> Lib1.SymAt
+      '\\' -> Lib1.SymBackslash
+      '^' -> Lib1.SymCaret
+      '_' -> Lib1.SymUnderscore
+      '`' -> Lib1.SymBacktick
+      '{' -> Lib1.SymLCurly
+      '|' -> Lib1.SymPipe
+      '}' -> Lib1.SymRCurly
+      '~' -> Lib1.SymTilde
+      _ -> error $ "Unexpected symbol " ++ show ch
 
 parseData :: Parser Lib1.Data
 parseData input =
@@ -351,11 +350,11 @@ showFile (Lib1.File name dat) = showName name ++ "#" ++ showData dat
     showData (Lib1.RecASCII ascii rest) = showASCII ascii ++ showData rest
 
     showASCII :: Lib1.ASCII -> String
-    showASCII (Lib1.ASCII az sym) = showAzAZ09 az ++ showSymbol sym
+    showASCII (Lib1.Alphanum az) = showAzAZ09 az
+    showASCII (Lib1.Symbol sym) = showSymbol sym
 
     showSymbol :: Lib1.Symbol -> String
     showSymbol sym = case sym of
-      Lib1.SymTab -> "\t"
       Lib1.SymExclam -> "!"
       Lib1.SymQuote -> "\""
       Lib1.SymDollar -> "$"
@@ -411,4 +410,5 @@ instance Eq Lib1.Command where
   Lib1.AddFolder pf1 fdn1 == Lib1.AddFolder pf2 fdn2 = pf1 == pf2 && fdn1 == fdn2
   Lib1.MoveFolder pf1 pt1 == Lib1.MoveFolder pf2 pt2 = pf1 == pf2 && pt1 == pt2
   Lib1.DeleteFolder pf1 == Lib1.DeleteFolder pf2 = pf1 == pf2
+  Lib1.Dump e1 == Lib1.Dump e2 = e1 == e2
   _ == _ = False

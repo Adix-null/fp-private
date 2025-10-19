@@ -81,21 +81,6 @@ data AzAZ09
   deriving (Show, Eq)
 
 -- <extension> ::= "txt" | "png" | "jpg" | "json" | "dat" | "exe" | "hs" | "cs" | "html" | "cpp" | "mp4" | "mp3"
--- data Extension
---   = Txt
---   | Png
---   | Jpg
---   | Json
---   | Dat
---   | Exe
---   | Hs
---   | Cs
---   | Html
---   | Cpp
---   | Mp4
---   | Mp3
---   deriving (Show, Eq)
-
 data Extension
   = Txt
   | Png

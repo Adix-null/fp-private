@@ -16,7 +16,7 @@ type ErrorMsg = String
 
 type Parser a = String -> Either ErrorMsg (a, String)
 
--- lesson helper utility stuff
+-- lesson helper parsers
 parseLetter :: Parser Char
 parseLetter [] = Left "A letter is expected but got empty input"
 parseLetter (h : t) =
@@ -37,6 +37,7 @@ parseAlphaNum input =
     Right r -> Right r
     Left _ -> parseDigit input
 
+-- apply parser to list of inputs
 many :: Parser a -> Parser [a]
 many p = many' p []
   where
@@ -45,6 +46,7 @@ many p = many' p []
         Left _ -> Right (acc, input)
         Right (v, r) -> many' p' (acc ++ [v]) r
 
+-- min length 1 symbol
 many1 :: Parser a -> Parser [a]
 many1 p input =
   case many p input of
@@ -52,17 +54,24 @@ many1 p input =
     Right ([], _) -> Left "At least on value required"
     Right a -> Right a
 
+-- apply func to start element
 pmap :: (a -> b) -> Parser a -> Parser b
 pmap f p input =
   case p input of
     Left e -> Left e
     Right (v, r) -> Right (f v, r)
 
+-- .contains
 keyword :: String -> Parser String
 keyword prefix input
   | prefix `isPrefixOf` input = Right (prefix, drop (length prefix) input)
   | otherwise = Left $ prefix ++ " is expected, got " ++ input
 
+-- check if whitespace exists
+ws :: Parser String
+ws = pmap concat (many1 (keyword " " `orElse` keyword "\t"))
+
+-- move to next parser if error
 orElse :: Parser a -> Parser a -> Parser a
 orElse p1 p2 input =
   case p1 input of
@@ -72,17 +81,24 @@ orElse p1 p2 input =
         Right r2 -> Right r2
         Left e2 -> Left $ e1 <> e2
 
-and3 :: Parser a -> Parser b -> Parser c -> Parser (a, b, c)
-and3 p1 p2 p3 input =
+-- parser seq
+and2 :: Parser a -> Parser b -> Parser (a, b)
+and2 p1 p2 input =
   case p1 input of
     Left e1 -> Left e1
     Right (v1, r1) ->
       case p2 r1 of
         Left e2 -> Left e2
-        Right (v2, r2) ->
-          case p3 r2 of
-            Left e3 -> Left e3
-            Right (v3, r3) -> Right ((v1, v2, v3), r3)
+        Right (v2, r2) -> Right ((v1, v2), r2)
+
+and3 :: Parser a -> Parser b -> Parser c -> Parser (a, b, c)
+and3 pa pb pc input =
+  case and2 pa pb input of
+    Left err -> Left err
+    Right ((va, vb), r) ->
+      case pc r of
+        Left err -> Left err
+        Right (vc, r2) -> Right ((va, vb, vc), r2)
 
 and4 :: Parser a -> Parser b -> Parser c -> Parser d -> Parser (a, b, c, d)
 and4 pa pb pc pd input =
@@ -119,9 +135,6 @@ and7 pa pb pc pd pe pf pg input =
       case pg r of
         Left err -> Left err
         Right (vg, r2) -> Right ((va, vb, vc, vd, ve, vf, vg), r2)
-
-ws :: Parser String
-ws = pmap concat (many1 (keyword " " `orElse` keyword "\t"))
 
 -- custom helper parsers
 parseAlphaNumStr :: Parser String
@@ -210,10 +223,10 @@ parseASCII input =
             | isLower c = Lib1.Lower c
             | isUpper c = Lib1.Upper c
             | otherwise = Lib1.Digit c
-       in Right (Lib1.ASCII az Lib1.SymTab, rest) -- alphanum with dummy SymTab
+       in Right (Lib1.ASCII az Lib1.SymTab, rest)
     Left _ ->
       case parseSymbol input of
-        Right (sym, rest) -> Right (Lib1.ASCII (Lib1.Digit '0') sym, rest) -- symbol with dummy AzAZ09
+        Right (sym, rest) -> Right (Lib1.ASCII (Lib1.Digit '0') sym, rest) -- parse symbol and give dummy alphanum char
         Left e -> Left e
 
 parseData :: Parser Lib1.Data
@@ -225,6 +238,7 @@ parseData input =
         Left _ -> Right (Lib1.SingleASCII ascii, rest) -- end of data
         Right (d, remaining) -> Right (Lib1.RecASCII ascii d, remaining)
 
+-- user command parsers
 parseAddFile :: Parser Lib1.Command
 parseAddFile =
   requireEnd $
@@ -304,7 +318,7 @@ instance ToCliCommand Lib1.Command where
   toCliCommand (Lib1.AddFile path file) = "AddFile " ++ showPath path ++ " " ++ showFile file
   toCliCommand (Lib1.MoveFile from to fname) = "MoveFile " ++ showPath from ++ " " ++ showPath to ++ " " ++ showName fname
   toCliCommand (Lib1.DeleteFile path fname) = "DeleteFile " ++ showPath path ++ " " ++ showName fname
-  toCliCommand (Lib1.AddFolder path folderName) = "AddFolder " ++ showPath path ++ " " ++ showFolderName folderName
+  toCliCommand (Lib1.AddFolder path folderName) = "AddFolder " ++ showPath path ++ " " ++ showAlphanumStr folderName
   toCliCommand (Lib1.MoveFolder from to) = "MoveFolder " ++ showPath from ++ " " ++ showPath to
   toCliCommand (Lib1.DeleteFolder path) = "DeleteFolder " ++ showPath path
 
@@ -350,9 +364,6 @@ showFile (Lib1.File name dat) = showName name ++ "#" ++ showData dat
       Lib1.SymPipe -> "|"
       Lib1.SymRCurly -> "}"
       Lib1.SymTilde -> "~"
-
-showFolderName :: Lib1.AlphanumStr -> String
-showFolderName = showAlphanumStr
 
 showPath :: Lib1.Path -> String
 showPath (Lib1.SinglePath a) = showAlphanumStr a

@@ -81,6 +81,16 @@ orElse p1 p2 input =
         Right r2 -> Right r2
         Left e2 -> Left $ e1 <> e2
 
+-- Return Right if both parsers pass
+andp :: Parser a -> Parser b -> Parser a
+p1 `andp` p2 = \input ->
+  case p1 input of
+    Left e -> Left e
+    Right (v1, rest1) ->
+      case p2 rest1 of
+        Left e -> Left e
+        Right (_, rest2) -> Right (v1, rest2)
+
 -- parser seq
 and2 :: Parser a -> Parser b -> Parser (a, b)
 and2 p1 p2 input =
@@ -244,10 +254,9 @@ parseDumpable =
 -- user command parsers
 parseAddFile :: Parser Lib1.Command
 parseAddFile =
-  requireEnd $
-    pmap
-      (\(_, _, path, _, file) -> Lib1.AddFile path file)
-      (and5 (keyword "AddFile") ws parsePath ws parseFile)
+  pmap
+    (\(_, _, path, _, file) -> Lib1.AddFile path file)
+    (and5 (keyword "AddFile") ws parsePath ws parseFile)
 
 parseMoveFile :: Parser Lib1.Command
 parseMoveFile =
@@ -295,14 +304,10 @@ parseDump =
     (\(_, _, dumpable) -> Lib1.Dump dumpable)
     (and3 (keyword "Dump") ws parseDumpable)
 
-requireEnd :: Parser a -> Parser a
-requireEnd p input =
-  case p input of
-    Left e -> Left e
-    Right (result, rest) ->
-      case dropWhile (== ' ') rest of
-        "" -> Right (result, "")
-        leftover -> Left $ "Unexpected input after command: " ++ show leftover
+requireEnd :: Parser ()
+requireEnd input
+  | all (`elem` [' ', '\t']) input = Right ((), "")
+  | otherwise = Left $ "Whitespace at the end required: " ++ show input
 
 parseNotImplemented :: Parser Lib1.Command
 parseNotImplemented _ = Left "Not implemented"
@@ -311,16 +316,16 @@ parseNotImplemented _ = Left "Not implemented"
 -- The function must be implemented and must have tests.
 parseCommand :: Parser Lib1.Command
 parseCommand =
-  requireEnd
-    ( parseAddFile
-        `orElse` parseMoveFile
-        `orElse` parseDeleteFile
-        `orElse` parseAddFolder
-        `orElse` parseMoveFolder
-        `orElse` parseDeleteFolder
-        `orElse` parseDump
-        `orElse` parseNotImplemented
-    )
+  ( parseAddFile
+      `orElse` parseMoveFile
+      `orElse` parseDeleteFile
+      `orElse` parseAddFolder
+      `orElse` parseMoveFolder
+      `orElse` parseDeleteFolder
+      `orElse` parseDump
+      `orElse` parseNotImplemented
+  )
+    `andp` requireEnd
 
 process :: Lib1.Command -> [String]
 process (Lib1.Dump Lib1.Examples) = "EXAMPLES:" : map toCliCommand Lib1.examples

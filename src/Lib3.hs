@@ -14,18 +14,25 @@ module Lib3
   )
 where
 
-import Control.Applicative
-import Control.Concurrent (Chan, readChan)
-import Control.Concurrent.STM.TVar (TVar)
+import Control.Applicative (Alternative (empty, some, (<|>)))
+import Control.Concurrent (Chan, readChan, writeChan)
+import Control.Concurrent.Chan (newChan)
+import Control.Concurrent.STM (atomically, readTVarIO)
+import Control.Concurrent.STM.TVar (TVar, readTVar, writeTVar)
+import Control.Exception (SomeException, try)
 import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (isPrefixOf)
 import qualified Lib1
+import qualified Lib2 (toCliCommand)
+import Text.Read ()
+
+fileName :: String
+fileName = "FSstate.txt"
 
 newtype Parser a = Parser
   { runParser :: String -> Either String (a, String)
   }
 
--- pmap, andN
 instance Functor Parser where
   fmap :: (a -> b) -> Parser a -> Parser b
   fmap f p = Parser $ \input ->
@@ -33,7 +40,6 @@ instance Functor Parser where
       Left e -> Left e
       Right (v, r) -> Right (f v, r)
 
--- orElse
 instance Alternative Parser where
   empty :: Parser a
   empty = Parser $ \_ -> Left "No alternatives"
@@ -47,7 +53,6 @@ instance Alternative Parser where
           Right r2 -> Right r2
           Left e2 -> Left $ e1 ++ "; " ++ e2
 
--- aplicative functor
 instance Applicative Parser where
   pure :: a -> Parser a
   pure a = Parser $ \input -> Right (a, input)
@@ -61,6 +66,7 @@ instance Applicative Parser where
           Left e2 -> Left e2
           Right (a, rest2) -> Right (f a, rest2)
 
+-- Primitive parsers
 parseLetter :: Parser Char
 parseLetter = Parser $ \input ->
   case input of
@@ -91,6 +97,7 @@ ws = concat <$> some (keyword " " <|> keyword "\t")
 parseOneOf :: [String] -> Parser String
 parseOneOf exts = foldr1 (<|>) (map keyword exts)
 
+-- parseExtension using parseOneOf then mapping
 parseExtension :: Parser Lib1.Extension
 parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
   where
@@ -102,6 +109,7 @@ parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
             Nothing -> error $ "Ext not in list: " ++ s
       | otherwise = error $ "Ext must be lowercase: " ++ s
 
+-- parseName: <alphanumstr> "." <extension>
 parseName :: Parser Lib1.Name
 parseName =
   (\nameStr _ ext -> Lib1.Name (Lib1.stringToAlphanumStr nameStr) ext)
@@ -109,6 +117,7 @@ parseName =
     <*> keyword "."
     <*> parseExtension
 
+-- parseASCII: a single alphanum or symbol
 parseASCII :: Parser Lib1.ASCII
 parseASCII = Parser $ \input ->
   case input of
@@ -124,10 +133,10 @@ parseASCII = Parser $ \input ->
       | isAsciiLower ch = Lib1.Lower ch
       | isDigit ch = Lib1.Digit ch
       | otherwise = error "Shouldn't be possible"
-    isSymbol ch = ch `elem` ['!', '"', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', ';', ':', '<', '=', '>', '?', '@', '\\', '^', '_', '`', '{', '|', '}', '~']
+    isSymbol ch = ch `elem` ['!', '\"', '$', '%', '&', '\'', '(', ')', '*', '+', ',', '-', '.', ';', ':', '<', '=', '>', '?', '@', '\\', '^', '_', '`', '{', '|', '}', '~']
     toSymbol ch = case ch of
       '!' -> Lib1.SymExclam
-      '"' -> Lib1.SymQuote
+      '\"' -> Lib1.SymQuote
       '$' -> Lib1.SymDollar
       '%' -> Lib1.SymPercent
       '&' -> Lib1.SymAmpersand
@@ -156,6 +165,7 @@ parseASCII = Parser $ \input ->
       '~' -> Lib1.SymTilde
       _ -> error $ "Unexpected symbol " ++ show ch
 
+-- ASCII sequence
 parseData :: Parser Lib1.Data
 parseData = toData <$> some parseASCII
   where
@@ -164,9 +174,11 @@ parseData = toData <$> some parseASCII
     toData (a : rest) = Lib1.RecASCII a (toData rest)
     toData [] = error "parseData: impossible"
 
+-- <name> "#" <data>
 parseFile :: Parser Lib1.File
 parseFile = (\name _ dat -> Lib1.File name dat) <$> parseName <*> keyword "#" <*> parseData
 
+-- path /
 parsePath :: Parser Lib1.Path
 parsePath = Parser $ \input ->
   case runParser parseAlphaNumStr input of
@@ -183,6 +195,7 @@ parsePath = Parser $ \input ->
 parseDumpable :: Parser Lib1.Dumpable
 parseDumpable = Lib1.Examples <$ keyword "Examples"
 
+-- fish, spaceships and p-maps
 parseAddFile :: Parser Lib1.Command
 parseAddFile =
   (\_ _ path _ file -> Lib1.AddFile path file)
@@ -249,6 +262,16 @@ requireEnd = Parser $ \input ->
 parseNotImplemented :: Parser Lib1.Command
 parseNotImplemented = Parser $ \_ -> Left "Not implemented"
 
+-- | Parses user's input.
+-- Yes, this is pretty much the same parser as in Lib2
+-- but with a bit different requirements:
+-- 1) It must implement Functor, Applicative and Alternative
+-- 2) It must NOT implement Monad, no do-notations
+-- 3) pmap with andN become <$> <*>
+-- 4) orElse becomes <|>
+-- 5) many and many1 become many and some
+-- Yes, it will be mostly a copy-paste but an easy one
+-- if Lib2 was implemented correctly.
 parseCommand :: Parser Lib1.Command
 parseCommand =
   ( parseAddFile
@@ -262,23 +285,81 @@ parseCommand =
   )
     <* requireEnd
 
-newtype State = State ()
+-- helper parsers
+showPath :: Lib1.Path -> String
+showPath (Lib1.SinglePath a) = showAlphanumStr a
+showPath (Lib1.RecPath a rest) = showAlphanumStr a ++ "/" ++ showPath rest
 
+showAlphanumStr :: Lib1.AlphanumStr -> String
+showAlphanumStr (Lib1.Single c) = showAzAZ09 c
+showAlphanumStr (Lib1.Rec c cs) = showAzAZ09 c ++ showAlphanumStr cs
+
+showAzAZ09 :: Lib1.AzAZ09 -> String
+showAzAZ09 (Lib1.Lower c) = [c]
+showAzAZ09 (Lib1.Upper c) = [c]
+showAzAZ09 (Lib1.Digit c) = [c]
+
+commandKeys :: Lib1.Command -> [String]
+commandKeys cmd = case cmd of
+  Lib1.AddFile path (Lib1.File (Lib1.Name an _ext) _dat) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
+  Lib1.MoveFile from to (Lib1.Name an _ext) -> ["file:" ++ showPath from ++ "/" ++ showAlphanumStr an, "file:" ++ showPath to ++ "/" ++ showAlphanumStr an]
+  Lib1.DeleteFile path (Lib1.Name an _ext) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
+  Lib1.AddFolder path _name -> ["folder:" ++ showPath path]
+  Lib1.MoveFolder from to -> ["folder:" ++ showPath from, "folder:" ++ showPath to]
+  Lib1.DeleteFolder path -> ["folder:" ++ showPath path]
+  Lib1.Dump _ -> ["dump"]
+
+-- state and command file storage
+
+-- | You can change the type to whatever needed. If your domain
+-- does not have any state you have to make it up.
+newtype State = State {unState :: [Lib1.Command]}
+
+-- Fix this accordingly
 emptyState :: State
-emptyState = State ()
+emptyState = State []
 
+computeNextState :: State -> Lib1.Command -> State
+computeNextState (State old) cmd =
+  let keys = commandKeys cmd
+      keep c = null (keys `intersect` commandKeys c)
+      newList = cmd : filter keep old
+   in State newList
+  where
+    intersect a b = [x | x <- a, x `elem` b]
+
+-- | Business/domain logic happens here.
+-- This function makes your program actually usefull.
+-- You may print if you want to print, you
+-- may mutate state if needed but there must be
+-- SINGLE atomically call in the function
+-- You do not want to write/read files here.
 execute :: TVar State -> Lib1.Command -> IO ()
-execute _ _ = error "Implement me 1"
+execute tvar cmd = atomically $ do
+  s <- readTVar tvar
+  let s' = computeNextState s cmd
+  writeTVar tvar s'
 
 data StorageOp = Save String (Chan ()) | Load (Chan String)
 
+-- | This function is started from main
+-- in a dedicated thread. It must be used to control
+-- file access in a synchronized manner: read requests
+-- from chan, do the IO operations needed and respond
+-- to a channel provided in a request. It must run forever.
+-- Modify as needed.
 storageOpLoop :: Chan StorageOp -> IO ()
 storageOpLoop c = do
   _ <- readChan c
   return $ error "Implement me 2"
 
+-- | This function will be called periodically
+-- and on programs' exit. File writes must be performed
+-- through `Chan StorageOp`.
 save :: Chan StorageOp -> TVar State -> IO (Either String ())
-save _ _ = return $ Left "Implement me 3"
+save _ _ = return $ Right ()
 
+-- | This function will be called on program start
+-- File reads must be performed through `Chan StorageOp`
 load :: Chan StorageOp -> TVar State -> IO (Either String ())
-load _ _ = return $ Left "Implement me 4"
+load _ _ = return $ Right ()

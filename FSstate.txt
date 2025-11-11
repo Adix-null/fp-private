@@ -1,0 +1,3 @@
+DeleteFolder f1/f2
+AddFolder f1 f2
+DeleteFolder 123

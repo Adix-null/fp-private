@@ -340,26 +340,58 @@ execute tvar cmd = atomically $ do
   let s' = computeNextState s cmd
   writeTVar tvar s'
 
-data StorageOp = Save String (Chan ()) | Load (Chan String)
-
 -- | This function is started from main
 -- in a dedicated thread. It must be used to control
 -- file access in a synchronized manner: read requests
 -- from chan, do the IO operations needed and respond
 -- to a channel provided in a request. It must run forever.
 -- Modify as needed.
+data StorageOp = Save String (Chan ()) | Load (Chan String)
+
 storageOpLoop :: Chan StorageOp -> IO ()
 storageOpLoop c = do
-  _ <- readChan c
-  return $ error "Implement me 2"
+  op <- readChan c
+  case op of
+    Save content ack -> do
+      _res <- try (writeFile fileName content) :: IO (Either SomeException ())
+      case _res of
+        Left _ -> writeChan ack ()
+        Right () -> writeChan ack ()
+      storageOpLoop c
+    Load resp -> do
+      eres <- try (readFile fileName) :: IO (Either SomeException String)
+      case eres of
+        Left _ -> writeChan resp ""
+        Right txt -> writeChan resp txt
+      storageOpLoop c
+
+stateToText :: State -> String
+stateToText (State cmds) = unlines $ map Lib2.toCliCommand (reverse cmds)
 
 -- | This function will be called periodically
 -- and on programs' exit. File writes must be performed
 -- through `Chan StorageOp`.
 save :: Chan StorageOp -> TVar State -> IO (Either String ())
-save _ _ = return $ Right ()
+save ch tvar = do
+  s <- readTVarIO tvar
+  let payload = stateToText s
+  ack <- newChan
+  writeChan ch (Save payload ack)
+  _ <- readChan ack
+  return $ Right ()
 
 -- | This function will be called on program start
 -- File reads must be performed through `Chan StorageOp`
 load :: Chan StorageOp -> TVar State -> IO (Either String ())
-load _ _ = return $ Right ()
+load ch tvar = do
+  resp <- newChan
+  writeChan ch (Load resp)
+  content <- readChan resp
+  let ls = filter (not . null) (lines content)
+      parsedOrErrs = map (\line -> runParser parseCommand line) ls
+  case sequence parsedOrErrs of
+    Left e -> return $ Left e
+    Right pairs ->
+      let cmds = map fst pairs
+          finalState = foldl computeNextState emptyState cmds
+       in atomically (writeTVar tvar finalState) >> return (Right ())

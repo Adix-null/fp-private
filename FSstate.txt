@@ -1,3 +1,4 @@
 DeleteFolder f1/f2
 AddFolder f1 f2
 DeleteFolder 123
+MoveFolder f2/f4 h

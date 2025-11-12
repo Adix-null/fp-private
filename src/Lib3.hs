@@ -1,4 +1,5 @@
 {-# LANGUAGE InstanceSigs #-}
+{-# LANGUAGE LambdaCase #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Lib3
@@ -29,17 +30,9 @@ import Text.Read ()
 fileName :: String
 fileName = "FSstate.txt"
 
-newtype Parser a = Parser
-  { runParser :: String -> Either String (a, String)
-  }
+newtype Parser a = Parser {runParser :: String -> Either String (a, String)}
 
-instance Functor Parser where
-  fmap :: (a -> b) -> Parser a -> Parser b
-  fmap f p = Parser $ \input ->
-    case runParser p input of
-      Left e -> Left e
-      Right (v, r) -> Right (f v, r)
-
+-- fish, spaceship, p-map
 instance Alternative Parser where
   empty :: Parser a
   empty = Parser $ \_ -> Left "No alternatives"
@@ -52,6 +45,13 @@ instance Alternative Parser where
         case runParser p2 input of
           Right r2 -> Right r2
           Left e2 -> Left $ e1 ++ "; " ++ e2
+
+instance Functor Parser where
+  fmap :: (a -> b) -> Parser a -> Parser b
+  fmap f p = Parser $ \input ->
+    case runParser p input of
+      Left e -> Left e
+      Right (v, r) -> Right (f v, r)
 
 instance Applicative Parser where
   pure :: a -> Parser a
@@ -66,18 +66,26 @@ instance Applicative Parser where
           Left e2 -> Left e2
           Right (a, rest2) -> Right (f a, rest2)
 
--- Primitive parsers
+-- subparsers
 parseLetter :: Parser Char
-parseLetter = Parser $ \input ->
-  case input of
-    [] -> Left "A letter is expected but got empty input"
-    (h : t) -> if isAlpha h then Right (h, t) else Left $ "A letter is expected, but got " ++ [h]
+parseLetter = Parser $ \case
+  [] -> Left "A letter is expected but got empty input"
+  (h : t) ->
+    if isAlpha h
+      then
+        Right (h, t)
+      else
+        Left $ "A letter is expected, but got " ++ [h]
 
 parseDigit :: Parser Char
-parseDigit = Parser $ \input ->
-  case input of
-    [] -> Left "A digit is expected but got empty input"
-    (h : t) -> if isDigit h then Right (h, t) else Left $ "A digit is expected, but got " ++ [h]
+parseDigit = Parser $ \case
+  [] -> Left "A digit is expected but got empty input"
+  (h : t) ->
+    if isDigit h
+      then
+        Right (h, t)
+      else
+        Left $ "A digit is expected, but got " ++ [h]
 
 parseAlphaNum :: Parser Char
 parseAlphaNum = parseLetter <|> parseDigit
@@ -91,13 +99,38 @@ keyword prefix = Parser $ \input ->
     then Right (prefix, drop (length prefix) input)
     else Left $ prefix ++ " is expected, got " ++ take (min 30 (length input)) input
 
-ws :: Parser String
-ws = concat <$> some (keyword " " <|> keyword "\t")
+whitespace :: Parser String
+whitespace = concat <$> some (keyword " " <|> keyword "\t")
 
 parseOneOf :: [String] -> Parser String
 parseOneOf exts = foldr1 (<|>) (map keyword exts)
 
--- parseExtension using parseOneOf then mapping
+-- <name> "#" <data>
+parseFile :: Parser Lib1.File
+parseFile = (\name _ dat -> Lib1.File name dat) <$> parseName <*> keyword "#" <*> parseData
+
+-- path /
+parsePath :: Parser Lib1.Path
+parsePath = Parser $ \input ->
+  case runParser parseAlphaNumStr input of
+    Left e -> Left e
+    Right (seg, rest) ->
+      let alphanum = Lib1.stringToAlphanumStr seg
+       in case rest of
+            ('/' : r) ->
+              case runParser parsePath r of
+                Left e2 -> Left e2
+                Right (p, remaining) -> Right (Lib1.RecPath alphanum p, remaining)
+            _ -> Right (Lib1.SinglePath alphanum, rest)
+
+-- <alphanumstr> "." <extension>
+parseName :: Parser Lib1.Name
+parseName =
+  (\nameStr _ ext -> Lib1.Name (Lib1.stringToAlphanumStr nameStr) ext)
+    <$> parseAlphaNumStr
+    <*> keyword "."
+    <*> parseExtension
+
 parseExtension :: Parser Lib1.Extension
 parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
   where
@@ -109,23 +142,13 @@ parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
             Nothing -> error $ "Ext not in list: " ++ s
       | otherwise = error $ "Ext must be lowercase: " ++ s
 
--- parseName: <alphanumstr> "." <extension>
-parseName :: Parser Lib1.Name
-parseName =
-  (\nameStr _ ext -> Lib1.Name (Lib1.stringToAlphanumStr nameStr) ext)
-    <$> parseAlphaNumStr
-    <*> keyword "."
-    <*> parseExtension
-
--- parseASCII: a single alphanum or symbol
 parseASCII :: Parser Lib1.ASCII
-parseASCII = Parser $ \input ->
-  case input of
-    [] -> Left "Unexpected end of input"
-    (c : cs)
-      | isAzAZ09 c -> Right (Lib1.Alphanum (toAzAZ09 c), cs)
-      | isSymbol c -> Right (Lib1.Symbol (toSymbol c), cs)
-      | otherwise -> Left $ "Unexpected character: " ++ show c
+parseASCII = Parser $ \case
+  [] -> Left "Unexpected end of input"
+  (c : cs)
+    | isAzAZ09 c -> Right (Lib1.Alphanum (toAzAZ09 c), cs)
+    | isSymbol c -> Right (Lib1.Symbol (toSymbol c), cs)
+    | otherwise -> Left $ "Unexpected character: " ++ show c
   where
     isAzAZ09 ch = isAsciiUpper ch || isAsciiLower ch || isDigit ch
     toAzAZ09 ch
@@ -165,7 +188,7 @@ parseASCII = Parser $ \input ->
       '~' -> Lib1.SymTilde
       _ -> error $ "Unexpected symbol " ++ show ch
 
--- ASCII sequence
+-- ASCII seq
 parseData :: Parser Lib1.Data
 parseData = toData <$> some parseASCII
   where
@@ -174,84 +197,65 @@ parseData = toData <$> some parseASCII
     toData (a : rest) = Lib1.RecASCII a (toData rest)
     toData [] = error "parseData: impossible"
 
--- <name> "#" <data>
-parseFile :: Parser Lib1.File
-parseFile = (\name _ dat -> Lib1.File name dat) <$> parseName <*> keyword "#" <*> parseData
-
--- path /
-parsePath :: Parser Lib1.Path
-parsePath = Parser $ \input ->
-  case runParser parseAlphaNumStr input of
-    Left e -> Left e
-    Right (seg, rest) ->
-      let alphanum = Lib1.stringToAlphanumStr seg
-       in case rest of
-            ('/' : r) ->
-              case runParser parsePath r of
-                Left e2 -> Left e2
-                Right (p, remaining) -> Right (Lib1.RecPath alphanum p, remaining)
-            _ -> Right (Lib1.SinglePath alphanum, rest)
-
-parseDumpable :: Parser Lib1.Dumpable
-parseDumpable = Lib1.Examples <$ keyword "Examples"
-
--- fish, spaceships and p-maps
 parseAddFile :: Parser Lib1.Command
 parseAddFile =
   (\_ _ path _ file -> Lib1.AddFile path file)
     <$> keyword "AddFile"
-    <*> ws
+    <*> whitespace
     <*> parsePath
-    <*> ws
+    <*> whitespace
     <*> parseFile
 
 parseMoveFile :: Parser Lib1.Command
 parseMoveFile =
   (\_ _ from _ to _ name -> Lib1.MoveFile from to name)
     <$> keyword "MoveFile"
-    <*> ws
+    <*> whitespace
     <*> parsePath
-    <*> ws
+    <*> whitespace
     <*> parsePath
-    <*> ws
+    <*> whitespace
     <*> parseName
 
 parseDeleteFile :: Parser Lib1.Command
 parseDeleteFile =
   (\_ _ path _ name -> Lib1.DeleteFile path name)
     <$> keyword "DeleteFile"
-    <*> ws
+    <*> whitespace
     <*> parsePath
-    <*> ws
+    <*> whitespace
     <*> parseName
 
 parseAddFolder :: Parser Lib1.Command
 parseAddFolder =
   (\_ _ path _ folderNameStr -> Lib1.AddFolder path (Lib1.stringToAlphanumStr folderNameStr))
     <$> keyword "AddFolder"
-    <*> ws
+    <*> whitespace
     <*> parsePath
-    <*> ws
+    <*> whitespace
     <*> parseAlphaNumStr
 
 parseMoveFolder :: Parser Lib1.Command
 parseMoveFolder =
   (\_ _ from _ to -> Lib1.MoveFolder from to)
     <$> keyword "MoveFolder"
-    <*> ws
+    <*> whitespace
     <*> parsePath
-    <*> ws
+    <*> whitespace
     <*> parsePath
 
 parseDeleteFolder :: Parser Lib1.Command
 parseDeleteFolder =
   (\_ _ path -> Lib1.DeleteFolder path)
     <$> keyword "DeleteFolder"
-    <*> ws
+    <*> whitespace
     <*> parsePath
 
 parseDump :: Parser Lib1.Command
-parseDump = (\_ _ d -> Lib1.Dump d) <$> keyword "Dump" <*> ws <*> parseDumpable
+parseDump = (\_ _ d -> Lib1.Dump d) <$> keyword "Dump" <*> whitespace <*> parseDumpable
+
+parseDumpable :: Parser Lib1.Dumpable
+parseDumpable = Lib1.Examples <$ keyword "Examples"
 
 requireEnd :: Parser ()
 requireEnd = Parser $ \input ->
@@ -285,7 +289,7 @@ parseCommand =
   )
     <* requireEnd
 
--- helper parsers
+-- helper show functions
 showPath :: Lib1.Path -> String
 showPath (Lib1.SinglePath a) = showAlphanumStr a
 showPath (Lib1.RecPath a rest) = showAlphanumStr a ++ "/" ++ showPath rest
@@ -388,7 +392,7 @@ load ch tvar = do
   writeChan ch (Load resp)
   content <- readChan resp
   let ls = filter (not . null) (lines content)
-      parsedOrErrs = map (\line -> runParser parseCommand line) ls
+      parsedOrErrs = map (runParser parseCommand) ls
   case sequence parsedOrErrs of
     Left e -> return $ Left e
     Right pairs ->

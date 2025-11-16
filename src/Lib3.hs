@@ -1,5 +1,6 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
+{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 
 module Lib3
@@ -257,6 +258,9 @@ parseDump = (\_ _ d -> Lib1.Dump d) <$> keyword "Dump" <*> whitespace <*> parseD
 parseDumpable :: Parser Lib1.Dumpable
 parseDumpable = Lib1.Examples <$ keyword "Examples"
 
+parseDumpHier :: Parser Lib1.Command
+parseDumpHier = Lib1.DumpHierarchy <$ keyword "DumpHier"
+
 requireEnd :: Parser ()
 requireEnd = Parser $ \input ->
   if all (`elem` [' ', '\t']) input
@@ -285,11 +289,23 @@ parseCommand =
       <|> parseMoveFolder
       <|> parseDeleteFolder
       <|> parseDump
+      <|> parseDumpHier
       <|> parseNotImplemented
   )
     <* requireEnd
 
 -- helper show functions
+showName :: Lib1.Name -> String
+showName (Lib1.Name an ext) = showAlphanumStr an ++ "." ++ show ext
+
+showData :: Lib1.Data -> String
+showData (Lib1.SingleASCII a) = showASCII a
+showData (Lib1.RecASCII a rest) = showASCII a ++ showData rest
+
+showASCII :: Lib1.ASCII -> String
+showASCII (Lib1.Alphanum az) = showAzAZ09 az
+showASCII (Lib1.Symbol sym) = show sym
+
 showPath :: Lib1.Path -> String
 showPath (Lib1.SinglePath a) = showAlphanumStr a
 showPath (Lib1.RecPath a rest) = showAlphanumStr a ++ "/" ++ showPath rest
@@ -312,6 +328,7 @@ commandKeys cmd = case cmd of
   Lib1.MoveFolder from to -> ["folder:" ++ showPath from, "folder:" ++ showPath to]
   Lib1.DeleteFolder path -> ["folder:" ++ showPath path]
   Lib1.Dump _ -> ["dump"]
+  Lib1.DumpHierarchy -> ["dumpHierarchy"]
 
 -- state and command file storage
 
@@ -332,6 +349,143 @@ computeNextState (State old) cmd =
   where
     intersect a b = [x | x <- a, x `elem` b]
 
+-- In-memory file system visual representation as tree
+data Tree = Tree {tName :: String, tFolders :: [Tree], tFiles :: [String]}
+  deriving (Show, Eq)
+
+emptyTree :: Tree
+emptyTree = Tree "" [] []
+
+pathToSegments :: Lib1.Path -> [String]
+pathToSegments p = go p []
+  where
+    go (Lib1.SinglePath a) acc = acc ++ [showAlphanumStr a]
+    go (Lib1.RecPath a rest) acc = go rest (acc ++ [showAlphanumStr a])
+
+findOrCreate :: String -> [Tree] -> (Tree, [Tree])
+findOrCreate name [] = (Tree name [] [], [])
+findOrCreate name (x : xs)
+  | tName x == name = (x, xs)
+  | otherwise =
+      let (found, rest) = findOrCreate name xs
+       in (found, x : rest)
+
+insertFolderAt :: [String] -> String -> Tree -> Tree
+insertFolderAt [] newName (Tree n fs f) =
+  if any ((== newName) . tName) fs then Tree n fs f else Tree n (fs ++ [Tree newName [] []]) f
+insertFolderAt (seg : segs) newName (Tree n fs f) =
+  let (child, rest) = findOrCreate seg fs
+      child' = insertFolderAt segs newName child
+      fs' = child' : rest
+   in Tree n fs' f
+
+insertFileAt :: [String] -> String -> Tree -> Tree
+insertFileAt [] fname (Tree n fs f) =
+  if fname `elem` f then Tree n fs f else Tree n fs (f ++ [fname])
+insertFileAt (seg : segs) fname (Tree n fs f) =
+  let (child, rest) = findOrCreate seg fs
+      child' = insertFileAt segs fname child
+      fs' = child' : rest
+   in Tree n fs' f
+
+removeFolderAt :: [String] -> Tree -> Tree
+removeFolderAt [] t = t
+removeFolderAt [seg] (Tree n fs f) = Tree n (filter ((/= seg) . tName) fs) f
+removeFolderAt (seg : segs) (Tree n fs f) =
+  let (child, _) = findOrCreate seg fs
+      child' = removeFolderAt segs child
+   in Tree n (map (\c -> if tName c == tName child then child' else c) fs) f
+
+moveFolder :: [String] -> [String] -> Tree -> Tree
+moveFolder src dest tree =
+  case extractFolder src tree of
+    (Nothing, t) -> t
+    (Just subtree, tWithout) -> insertSubtreeAt dest subtree tWithout
+
+extractFolder :: [String] -> Tree -> (Maybe Tree, Tree)
+extractFolder [] t = (Nothing, t)
+extractFolder [seg] (Tree n fs f) =
+  case break ((== seg) . tName) fs of
+    (_, []) -> (Nothing, Tree n fs f)
+    (before, matched : after) -> (Just matched, Tree n (before ++ after) f)
+extractFolder (seg : segs) (Tree n fs f) =
+  case break ((== seg) . tName) fs of
+    (_, []) -> (Nothing, Tree n fs f)
+    (before, matched : after) ->
+      let (found, matched') = extractFolder segs matched
+       in (found, Tree n (before ++ matched' : after) f)
+
+insertSubtreeAt :: [String] -> Tree -> Tree -> Tree
+insertSubtreeAt [] subtree (Tree n fs f) = Tree n (fs ++ [subtree]) f
+insertSubtreeAt (seg : segs) subtree (Tree n fs f) =
+  let (child, rest) = findOrCreate seg fs
+      child' = insertSubtreeAt segs subtree child
+      fs' = child' : rest
+   in Tree n fs' f
+
+moveFile :: [String] -> [String] -> String -> Tree -> Tree
+moveFile from to fname t =
+  let (t', removed) = removeFileAt from fname t
+   in if removed then insertFileAt to fname t' else t'
+
+removeFileAt :: [String] -> String -> Tree -> (Tree, Bool)
+removeFileAt [] fname (Tree n fs f) =
+  if fname `elem` f then (Tree n fs (filter (/= fname) f), True) else (Tree n fs f, False)
+removeFileAt (seg : segs) fname (Tree n fs f) =
+  let (child, rest) = findOrCreate seg fs
+      (child', removed) = removeFileAt segs fname child
+      fs' = child' : rest
+   in (Tree n fs' f, removed)
+
+applyToTree :: Tree -> Lib1.Command -> Tree
+applyToTree t cmd = case cmd of
+  Lib1.AddFolder path nameStr ->
+    let segs = pathToSegments path
+        newName = showAlphanumStr nameStr
+     in insertFolderAt segs newName t
+  Lib1.AddFile path (Lib1.File name dat) ->
+    let segs = pathToSegments path
+        fname = showName name ++ "#" ++ showData dat -- include data here
+     in insertFileAt segs fname t
+  Lib1.DeleteFolder path ->
+    let segs = pathToSegments path
+     in removeFolderAt segs t
+  Lib1.MoveFolder from to ->
+    let s = pathToSegments from
+        d = pathToSegments to
+     in moveFolder s d t
+  Lib1.MoveFile from to name ->
+    let s = pathToSegments from
+        d = pathToSegments to
+        fname = showName name
+     in moveFile s d fname t
+  Lib1.DeleteFile from name ->
+    let s = pathToSegments from
+        fname = showName name
+     in fst $ removeFileAt s fname t
+  _ -> t
+
+-- Build file system from commands
+buildTree :: [Lib1.Command] -> Tree
+buildTree = foldl applyToTree emptyTree
+
+formattedTreeOtp :: Tree -> [String]
+formattedTreeOtp = go 0
+  where
+    indent n = replicate (2 * n) ' '
+    go lvl (Tree name fs files) =
+      let prefix = if null name then "" else indent lvl ++ name ++ " -> ["
+          folderLines = concatMap (go (lvl + 1)) fs
+          fileLine =
+            ([indent (lvl + 1) ++ concatMap (++ "\t") files & init | not (null files)]) -- remove last tab
+          closing = ([indent lvl ++ "]" | not (null name)])
+       in ([prefix | not (null name)]) ++ folderLines ++ fileLine ++ closing
+
+(&) :: b -> (b -> c) -> c
+(&) = flip ($)
+
+-- Dump, DumpHierarchy or unknown do not change tree
+
 -- | Business/domain logic happens here.
 -- This function makes your program actually usefull.
 -- You may print if you want to print, you
@@ -339,10 +493,16 @@ computeNextState (State old) cmd =
 -- SINGLE atomically call in the function
 -- You do not want to write/read files here.
 execute :: TVar State -> Lib1.Command -> IO ()
-execute tvar cmd = atomically $ do
-  s <- readTVar tvar
-  let s' = computeNextState s cmd
-  writeTVar tvar s'
+execute tvar cmd = case cmd of
+  Lib1.DumpHierarchy -> do
+    State cmds <- readTVarIO tvar
+    let chronological = reverse cmds
+        tree = buildTree chronological
+    mapM_ putStrLn (formattedTreeOtp tree)
+  _ -> atomically $ do
+    s <- readTVar tvar
+    let s' = computeNextState s cmd
+    writeTVar tvar s'
 
 -- | This function is started from main
 -- in a dedicated thread. It must be used to control

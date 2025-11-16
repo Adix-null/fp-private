@@ -186,6 +186,7 @@ data Command
   | AddFolder Path AlphanumStr -- <AddFolder> ::= "AddFolder " <path> " " <alphanumstr>
   | MoveFolder Path Path -- <MoveFolder> ::= "MoveFolder " <path> " " <path>
   | DeleteFolder Path -- <DeleteFolder> ::= "DeleteFolder " <path>
+  | DumpHierarchy
   deriving (Show)
 
 stringToAlphanumStr :: String -> AlphanumStr

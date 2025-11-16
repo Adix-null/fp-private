@@ -1,4 +1,3 @@
-DeleteFolder f1/f2
-AddFolder f1 f2
-DeleteFolder 123
-MoveFolder f2/f4 h
+AddFile f1 n.cs#1
+DeleteFile f1 m.cs
+AddFolder rf g

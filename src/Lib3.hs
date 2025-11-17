@@ -26,6 +26,7 @@ import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (isPrefixOf)
 import qualified Lib1
 import qualified Lib2 (toCliCommand)
+import System.IO.Unsafe (unsafePerformIO)
 import Text.Read ()
 
 fileName :: String
@@ -492,6 +493,10 @@ formattedTreeOtp = go 0
 -- may mutate state if needed but there must be
 -- SINGLE atomically call in the function
 -- You do not want to write/read files here.
+{-# NOINLINE globalChan #-}
+globalChan :: Chan StorageOp
+globalChan = unsafePerformIO newChan
+
 execute :: TVar State -> Lib1.Command -> IO ()
 execute tvar cmd = case cmd of
   Lib1.DumpHierarchy -> do
@@ -499,10 +504,34 @@ execute tvar cmd = case cmd of
     let chronological = reverse cmds
         tree = buildTree chronological
     mapM_ putStrLn (formattedTreeOtp tree)
-  _ -> atomically $ do
-    s <- readTVar tvar
-    let s' = computeNextState s cmd
-    writeTVar tvar s'
+  _ -> do
+    atomically $ do
+      s <- readTVar tvar
+      let s' = computeNextState s cmd
+      writeTVar tvar s'
+    rewriteStateFile tvar globalChan
+
+-- Generate optimized command list from the current filesystem
+optimizeCommands :: Tree -> [Lib1.Command]
+optimizeCommands (Tree "" fs _f) = concatMap genFolder fs
+  where
+    genFolder :: Tree -> [Lib1.Command]
+    genFolder t@(Tree name subFs _files) =
+      let path = Lib1.stringToPath name
+          createThis = [Lib1.AddFolder path (Lib1.stringToAlphanumStr name)]
+       in -- For now we ignore subfolders/files; just handle first level
+          createThis
+
+rewriteStateFile :: TVar State -> Chan StorageOp -> IO ()
+rewriteStateFile tvar ch = do
+  State cmds <- readTVarIO tvar
+  let tree = buildTree (reverse cmds)
+      optimized = optimizeCommands tree
+      payload = unlines $ map Lib2.toCliCommand optimized
+  ack <- newChan
+  writeChan ch (Save payload ack)
+  _ <- readChan ack
+  return ()
 
 -- | This function is started from main
 -- in a dedicated thread. It must be used to control

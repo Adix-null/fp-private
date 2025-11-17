@@ -339,7 +339,7 @@ class ToCliCommand a where
 -- use "deriving Show" only.
 instance ToCliCommand Lib1.Command where
   toCliCommand (Lib1.Dump d) = "Dump " ++ show d
-  toCliCommand Lib1.DumpHierarchy = "DumpHierarchy"
+  toCliCommand Lib1.DumpFS = "DumpFS"
   toCliCommand (Lib1.AddFile path file) = "AddFile " ++ showPath path ++ " " ++ showFile file
   toCliCommand (Lib1.MoveFile from to fname) = "MoveFile " ++ showPath from ++ " " ++ showPath to ++ " " ++ showName fname
   toCliCommand (Lib1.DeleteFile path fname) = "DeleteFile " ++ showPath path ++ " " ++ showName fname

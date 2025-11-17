@@ -2,6 +2,9 @@
 {-# LANGUAGE LambdaCase #-}
 {-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
+{-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
+
+{-# HLINT ignore "Use list comprehension" #-}
 
 module Lib3
   ( emptyState,
@@ -23,7 +26,7 @@ import Control.Concurrent.STM (atomically, readTVarIO)
 import Control.Concurrent.STM.TVar (TVar, readTVar, writeTVar)
 import Control.Exception (SomeException, try)
 import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
-import Data.List (isPrefixOf)
+import Data.List (intercalate, isPrefixOf)
 import qualified Lib1
 import qualified Lib2 (toCliCommand)
 import System.IO.Unsafe (unsafePerformIO)
@@ -259,8 +262,8 @@ parseDump = (\_ _ d -> Lib1.Dump d) <$> keyword "Dump" <*> whitespace <*> parseD
 parseDumpable :: Parser Lib1.Dumpable
 parseDumpable = Lib1.Examples <$ keyword "Examples"
 
-parseDumpHier :: Parser Lib1.Command
-parseDumpHier = Lib1.DumpHierarchy <$ keyword "DumpHier"
+parseDumpFS :: Parser Lib1.Command
+parseDumpFS = Lib1.DumpFS <$ keyword "DumpFS"
 
 requireEnd :: Parser ()
 requireEnd = Parser $ \input ->
@@ -290,7 +293,7 @@ parseCommand =
       <|> parseMoveFolder
       <|> parseDeleteFolder
       <|> parseDump
-      <|> parseDumpHier
+      <|> parseDumpFS
       <|> parseNotImplemented
   )
     <* requireEnd
@@ -298,14 +301,6 @@ parseCommand =
 -- helper show functions
 showName :: Lib1.Name -> String
 showName (Lib1.Name an ext) = showAlphanumStr an ++ "." ++ show ext
-
-showData :: Lib1.Data -> String
-showData (Lib1.SingleASCII a) = showASCII a
-showData (Lib1.RecASCII a rest) = showASCII a ++ showData rest
-
-showASCII :: Lib1.ASCII -> String
-showASCII (Lib1.Alphanum az) = showAzAZ09 az
-showASCII (Lib1.Symbol sym) = show sym
 
 showPath :: Lib1.Path -> String
 showPath (Lib1.SinglePath a) = showAlphanumStr a
@@ -320,6 +315,52 @@ showAzAZ09 (Lib1.Lower c) = [c]
 showAzAZ09 (Lib1.Upper c) = [c]
 showAzAZ09 (Lib1.Digit c) = [c]
 
+-- boilerplate converters
+dataToString :: Lib1.Data -> String
+dataToString (Lib1.SingleASCII a) = [asciiToChar a]
+dataToString (Lib1.RecASCII a rest) = asciiToChar a : dataToString rest
+
+asciiToChar :: Lib1.ASCII -> Char
+asciiToChar (Lib1.Alphanum a) = azAZ09ToChar a
+asciiToChar (Lib1.Symbol s) = symbolToChar s
+
+azAZ09ToChar :: Lib1.AzAZ09 -> Char
+azAZ09ToChar a = case a of
+  Lib1.Lower c -> c
+  Lib1.Upper c -> c
+  Lib1.Digit c -> c
+
+symbolToChar :: Lib1.Symbol -> Char
+symbolToChar s = case s of
+  Lib1.SymExclam -> '!'
+  Lib1.SymQuote -> '"'
+  Lib1.SymDollar -> '$'
+  Lib1.SymPercent -> '%'
+  Lib1.SymAmpersand -> '&'
+  Lib1.SymApostrophe -> '\''
+  Lib1.SymLParen -> '('
+  Lib1.SymRParen -> ')'
+  Lib1.SymAsterisk -> '*'
+  Lib1.SymPlus -> '+'
+  Lib1.SymComma -> ','
+  Lib1.SymMinus -> '-'
+  Lib1.SymDot -> '.'
+  Lib1.SymColon -> ':'
+  Lib1.SymSemicolon -> ';'
+  Lib1.SymLt -> '<'
+  Lib1.SymEq -> '='
+  Lib1.SymGt -> '>'
+  Lib1.SymQMark -> '?'
+  Lib1.SymAt -> '@'
+  Lib1.SymBackslash -> '\\'
+  Lib1.SymCaret -> '^'
+  Lib1.SymUnderscore -> '_'
+  Lib1.SymBacktick -> '`'
+  Lib1.SymLCurly -> '{'
+  Lib1.SymPipe -> '|'
+  Lib1.SymRCurly -> '}'
+  Lib1.SymTilde -> '~'
+
 commandKeys :: Lib1.Command -> [String]
 commandKeys cmd = case cmd of
   Lib1.AddFile path (Lib1.File (Lib1.Name an _ext) _dat) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
@@ -329,7 +370,7 @@ commandKeys cmd = case cmd of
   Lib1.MoveFolder from to -> ["folder:" ++ showPath from, "folder:" ++ showPath to]
   Lib1.DeleteFolder path -> ["folder:" ++ showPath path]
   Lib1.Dump _ -> ["dump"]
-  Lib1.DumpHierarchy -> ["dumpHierarchy"]
+  Lib1.DumpFS -> ["dumpFS"]
 
 -- state and command file storage
 
@@ -351,7 +392,7 @@ computeNextState (State old) cmd =
     intersect a b = [x | x <- a, x `elem` b]
 
 -- In-memory file system visual representation as tree
-data Tree = Tree {tName :: String, tFolders :: [Tree], tFiles :: [String]}
+data Tree = Tree {tName :: String, tFolders :: [Tree], tFiles :: [(String, Lib1.Data)]}
   deriving (Show, Eq)
 
 emptyTree :: Tree
@@ -380,12 +421,12 @@ insertFolderAt (seg : segs) newName (Tree n fs f) =
       fs' = child' : rest
    in Tree n fs' f
 
-insertFileAt :: [String] -> String -> Tree -> Tree
-insertFileAt [] fname (Tree n fs f) =
-  if fname `elem` f then Tree n fs f else Tree n fs (f ++ [fname])
-insertFileAt (seg : segs) fname (Tree n fs f) =
+insertFileAt :: [String] -> (String, Lib1.Data) -> Tree -> Tree
+insertFileAt [] fnameWithData@(fname, _) (Tree n fs f) =
+  if any ((== fname) . fst) f then Tree n fs f else Tree n fs (f ++ [fnameWithData])
+insertFileAt (seg : segs) fnameWithData (Tree n fs f) =
   let (child, rest) = findOrCreate seg fs
-      child' = insertFileAt segs fname child
+      child' = insertFileAt segs fnameWithData child
       fs' = child' : rest
    in Tree n fs' f
 
@@ -426,12 +467,22 @@ insertSubtreeAt (seg : segs) subtree (Tree n fs f) =
 
 moveFile :: [String] -> [String] -> String -> Tree -> Tree
 moveFile from to fname t =
-  let (t', removed) = removeFileAt from fname t
-   in if removed then insertFileAt to fname t' else t'
+  let (t', removed, fdata) = removeFileAtWithData from fname t
+   in (if removed then insertFileAt to (fname, fdata) t' else t')
+
+removeFileAtWithData :: [String] -> String -> Tree -> (Tree, Bool, Lib1.Data)
+removeFileAtWithData [] fname (Tree n fs f) =
+  case lookup fname f of
+    Just dat -> (Tree n fs (filter ((/= fname) . fst) f), True, dat)
+    Nothing -> (Tree n fs f, False, Lib1.SingleASCII (Lib1.Alphanum (Lib1.Lower ' ')))
+removeFileAtWithData (seg : segs) fname (Tree n fs f) =
+  let (child, rest) = findOrCreate seg fs
+      (child', removed, dat) = removeFileAtWithData segs fname child
+   in (Tree n (child' : rest) f, removed, dat)
 
 removeFileAt :: [String] -> String -> Tree -> (Tree, Bool)
 removeFileAt [] fname (Tree n fs f) =
-  if fname `elem` f then (Tree n fs (filter (/= fname) f), True) else (Tree n fs f, False)
+  if any ((== fname) . fst) f then (Tree n fs (filter ((/= fname) . fst) f), True) else (Tree n fs f, False)
 removeFileAt (seg : segs) fname (Tree n fs f) =
   let (child, rest) = findOrCreate seg fs
       (child', removed) = removeFileAt segs fname child
@@ -446,24 +497,24 @@ applyToTree t cmd = case cmd of
      in insertFolderAt segs newName t
   Lib1.AddFile path (Lib1.File name dat) ->
     let segs = pathToSegments path
-        fname = showName name ++ "#" ++ showData dat -- include data here
-     in insertFileAt segs fname t
+        fname = showName name
+     in insertFileAt segs (fname, dat) t
   Lib1.DeleteFolder path ->
     let segs = pathToSegments path
      in removeFolderAt segs t
-  Lib1.MoveFolder from to ->
-    let s = pathToSegments from
-        d = pathToSegments to
-     in moveFolder s d t
+  Lib1.DeleteFile from name ->
+    let segs = pathToSegments from
+        fname = showName name
+     in fst $ removeFileAt segs fname t
   Lib1.MoveFile from to name ->
     let s = pathToSegments from
         d = pathToSegments to
         fname = showName name
      in moveFile s d fname t
-  Lib1.DeleteFile from name ->
+  Lib1.MoveFolder from to ->
     let s = pathToSegments from
-        fname = showName name
-     in fst $ removeFileAt s fname t
+        d = pathToSegments to
+     in moveFolder s d t
   _ -> t
 
 -- Build file system from commands
@@ -478,14 +529,15 @@ formattedTreeOtp = go 0
       let prefix = if null name then "" else indent lvl ++ name ++ " -> ["
           folderLines = concatMap (go (lvl + 1)) fs
           fileLine =
-            ([indent (lvl + 1) ++ concatMap (++ "\t") files & init | not (null files)]) -- remove last tab
-          closing = ([indent lvl ++ "]" | not (null name)])
+            if null files
+              then []
+              else
+                [indent (lvl + 1) ++ concatMap (\(fname, dat) -> fname ++ "#" ++ dataToString dat ++ "\t") files & init]
+          closing = [indent lvl ++ "]" | not (null name)]
        in ([prefix | not (null name)]) ++ folderLines ++ fileLine ++ closing
 
 (&) :: b -> (b -> c) -> c
 (&) = flip ($)
-
--- Dump, DumpHierarchy or unknown do not change tree
 
 -- | Business/domain logic happens here.
 -- This function makes your program actually usefull.
@@ -493,45 +545,17 @@ formattedTreeOtp = go 0
 -- may mutate state if needed but there must be
 -- SINGLE atomically call in the function
 -- You do not want to write/read files here.
-{-# NOINLINE globalChan #-}
-globalChan :: Chan StorageOp
-globalChan = unsafePerformIO newChan
-
 execute :: TVar State -> Lib1.Command -> IO ()
 execute tvar cmd = case cmd of
-  Lib1.DumpHierarchy -> do
+  Lib1.DumpFS -> do
     State cmds <- readTVarIO tvar
     let chronological = reverse cmds
         tree = buildTree chronological
     mapM_ putStrLn (formattedTreeOtp tree)
-  _ -> do
-    atomically $ do
-      s <- readTVar tvar
-      let s' = computeNextState s cmd
-      writeTVar tvar s'
-    rewriteStateFile tvar globalChan
-
--- Generate optimized command list from the current filesystem
-optimizeCommands :: Tree -> [Lib1.Command]
-optimizeCommands (Tree "" fs _f) = concatMap genFolder fs
-  where
-    genFolder :: Tree -> [Lib1.Command]
-    genFolder t@(Tree name subFs _files) =
-      let path = Lib1.stringToPath name
-          createThis = [Lib1.AddFolder path (Lib1.stringToAlphanumStr name)]
-       in -- For now we ignore subfolders/files; just handle first level
-          createThis
-
-rewriteStateFile :: TVar State -> Chan StorageOp -> IO ()
-rewriteStateFile tvar ch = do
-  State cmds <- readTVarIO tvar
-  let tree = buildTree (reverse cmds)
-      optimized = optimizeCommands tree
-      payload = unlines $ map Lib2.toCliCommand optimized
-  ack <- newChan
-  writeChan ch (Save payload ack)
-  _ <- readChan ack
-  return ()
+  _ -> atomically $ do
+    s <- readTVar tvar
+    let s' = computeNextState s cmd
+    writeTVar tvar s'
 
 -- | This function is started from main
 -- in a dedicated thread. It must be used to control
@@ -558,20 +582,30 @@ storageOpLoop c = do
         Right txt -> writeChan resp txt
       storageOpLoop c
 
-stateToText :: State -> String
-stateToText (State cmds) = unlines $ map Lib2.toCliCommand (reverse cmds)
-
 -- | This function will be called periodically
 -- and on programs' exit. File writes must be performed
 -- through `Chan StorageOp`.
 save :: Chan StorageOp -> TVar State -> IO (Either String ())
 save ch tvar = do
-  s <- readTVarIO tvar
-  let payload = stateToText s
+  s@(State _) <- readTVarIO tvar
+  let payload = treeToCommands s -- generate optimized commands with file data
   ack <- newChan
   writeChan ch (Save payload ack)
   _ <- readChan ack
   return $ Right ()
+
+treeToCommands :: State -> String
+treeToCommands (State cmds) =
+  let tree = buildTree (reverse cmds)
+   in unlines $ go "" tree
+  where
+    go :: String -> Tree -> [String]
+    go path (Tree name fs files) =
+      let currentPath = if null name then path else path ++ "/" ++ name
+          folderCmd = (["AddFolder " ++ path ++ " " ++ name | not (null name)])
+          fileCmds = map (\(fname, fdata) -> "AddFile " ++ currentPath ++ " " ++ fname ++ "#" ++ dataToString fdata) files
+          subfolderCmds = concatMap (go currentPath) fs
+       in folderCmd ++ subfolderCmds ++ fileCmds
 
 -- | This function will be called on program start
 -- File reads must be performed through `Chan StorageOp`
@@ -584,7 +618,8 @@ load ch tvar = do
       parsedOrErrs = map (runParser parseCommand) ls
   case sequence parsedOrErrs of
     Left e -> return $ Left e
-    Right pairs ->
+    Right pairs -> do
       let cmds = map fst pairs
-          finalState = foldl computeNextState emptyState cmds
-       in atomically (writeTVar tvar finalState) >> return (Right ())
+          finalState = State cmds
+      atomically $ writeTVar tvar finalState
+      return (Right ())

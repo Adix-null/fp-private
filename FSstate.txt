@@ -1,3 +1,0 @@
-AddFolder f1 f2
-AddFolder f1/f2 f3
-AddFolder t y

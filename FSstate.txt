@@ -1,6 +1,5 @@
-AddFolderAtRoot g
-AddFolder g f2
-AddFolder g/f2 f3
-AddFolder g/f2/f3 er
-AddFile g/f2 re.txt#o*
-AddFolderAtRoot f1
+AddFolderAtRoot f
+AddFolder f t
+AddFolder f/t f1
+AddFile f/t/f1 d.txt#e*(&(*
+AddFolder f g

@@ -1,6 +1,5 @@
 {-# LANGUAGE InstanceSigs #-}
 {-# LANGUAGE LambdaCase #-}
-{-# LANGUAGE TupleSections #-}
 {-# OPTIONS_GHC -Wno-orphans #-}
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
@@ -26,10 +25,8 @@ import Control.Concurrent.STM (atomically, readTVarIO)
 import Control.Concurrent.STM.TVar (TVar, readTVar, writeTVar)
 import Control.Exception (SomeException, try)
 import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
-import Data.List (intercalate, isPrefixOf)
+import Data.List (isPrefixOf)
 import qualified Lib1
-import qualified Lib2 (toCliCommand)
-import System.IO.Unsafe (unsafePerformIO)
 import Text.Read ()
 
 fileName :: String
@@ -403,12 +400,17 @@ computeNextState (State old) cmd =
     intersect a b = [x | x <- a, x `elem` b]
 
 -- In-memory file system visual representation as tree
-data Tree = Tree {tName :: String, tFolders :: [Tree], tFiles :: [(String, Lib1.Data)]}
+data Tree = Tree
+  { tName :: String,
+    tFolders :: [Tree],
+    tFiles :: [(String, Lib1.Data)]
+  }
   deriving (Show, Eq)
 
 emptyTree :: Tree
 emptyTree = Tree "" [] []
 
+-- functions to logically change state
 pathToSegments :: Lib1.Path -> [String]
 pathToSegments p = go p []
   where
@@ -459,7 +461,7 @@ moveFolder :: [String] -> [String] -> Tree -> Tree
 moveFolder src dest tree =
   case extractFolder src tree of
     (Nothing, t) -> t
-    (Just subtree, tWithout) -> insertSubtreeAt dest subtree tWithout
+    (Just subtree, tWithout) -> insertSubfolderAt dest subtree tWithout
 
 extractFolder :: [String] -> Tree -> (Maybe Tree, Tree)
 extractFolder [] t = (Nothing, t)
@@ -474,11 +476,11 @@ extractFolder (seg : segs) (Tree n fs f) =
       let (found, matched') = extractFolder segs matched
        in (found, Tree n (before ++ matched' : after) f)
 
-insertSubtreeAt :: [String] -> Tree -> Tree -> Tree
-insertSubtreeAt [] subtree (Tree n fs f) = Tree n (fs ++ [subtree]) f
-insertSubtreeAt (seg : segs) subtree (Tree n fs f) =
+insertSubfolderAt :: [String] -> Tree -> Tree -> Tree
+insertSubfolderAt [] subtree (Tree n fs f) = Tree n (fs ++ [subtree]) f
+insertSubfolderAt (seg : segs) subtree (Tree n fs f) =
   let (child, rest) = findOrCreate seg fs
-      child' = insertSubtreeAt segs subtree child
+      child' = insertSubfolderAt segs subtree child
       fs' = child' : rest
    in Tree n fs' f
 
@@ -508,39 +510,20 @@ removeFileAt (seg : segs) fname (Tree n fs f) =
 
 applyToTree :: Tree -> Lib1.Command -> Tree
 applyToTree t cmd = case cmd of
-  Lib1.AddFile path (Lib1.File name dat) ->
-    let segs = pathToSegments path
-        fname = showName name
-     in insertFileAt segs (fname, dat) t
-  Lib1.MoveFile from to name ->
-    let s = pathToSegments from
-        d = pathToSegments to
-        fname = showName name
-     in moveFile s d fname t
-  Lib1.DeleteFile from name ->
-    let segs = pathToSegments from
-        fname = showName name
-     in fst $ removeFileAt segs fname t
-  Lib1.AddFolder path nameStr ->
-    let segs = pathToSegments path
-        newName = showAlphanumStr nameStr
-     in insertFolderAt segs newName t
-  Lib1.MoveFolder from to ->
-    let s = pathToSegments from
-        d = pathToSegments to
-     in moveFolder s d t
-  Lib1.DeleteFolder path ->
-    let segs = pathToSegments path
-     in removeFolderAt segs t
-  Lib1.AddFolderAtRoot nameStr ->
-    let newName = showAlphanumStr nameStr
-     in insertFolderAtRoot newName t
+  Lib1.AddFile path (Lib1.File name dat) -> insertFileAt (pathToSegments path) (showName name, dat) t
+  Lib1.MoveFile from to name -> moveFile (pathToSegments from) (pathToSegments to) (showName name) t
+  Lib1.DeleteFile from name -> fst $ removeFileAt (pathToSegments from) (showName name) t
+  Lib1.AddFolder path nameStr -> insertFolderAt (pathToSegments path) (showAlphanumStr nameStr) t
+  Lib1.MoveFolder from to -> moveFolder (pathToSegments from) (pathToSegments to) t
+  Lib1.DeleteFolder path -> removeFolderAt (pathToSegments path) t
+  Lib1.AddFolderAtRoot nameStr -> insertFolderAtRoot (showAlphanumStr nameStr) t
   _ -> t
 
 -- Build file system from commands
 buildTree :: [Lib1.Command] -> Tree
 buildTree = foldl applyToTree emptyTree
 
+-- Format tree like in bnf
 formattedTreeOtp :: Tree -> [String]
 formattedTreeOtp = go 0
   where
@@ -558,6 +541,26 @@ formattedTreeOtp = go 0
 
 (&) :: b -> (b -> c) -> c
 (&) = flip ($)
+
+fsToRecipe :: State -> String
+fsToRecipe (State cmds) =
+  let tree = buildTree (reverse cmds)
+   in unlines $ concatMap goRoot (tFolders tree)
+  where
+    goRoot :: Tree -> [String]
+    goRoot (Tree name fs files) =
+      let rootCmd = ["AddFolderAtRoot " ++ name]
+          fileCmds = map (\(fname, dat) -> "AddFile " ++ name ++ "/" ++ fname ++ "#" ++ dataToString dat) files
+          subfolderCmds = concatMap (goSub name) fs
+       in rootCmd ++ subfolderCmds ++ fileCmds
+
+    goSub :: String -> Tree -> [String]
+    goSub path (Tree name fs files) =
+      let currentPath = path ++ "/" ++ name
+          folderCmd = ["AddFolder " ++ path ++ " " ++ name]
+          fileCmds = map (\(fname, fdata) -> "AddFile " ++ currentPath ++ " " ++ fname ++ "#" ++ dataToString fdata) files
+          subfolderCmds = concatMap (goSub currentPath) fs
+       in folderCmd ++ subfolderCmds ++ fileCmds
 
 -- | Business/domain logic happens here.
 -- This function makes your program actually usefull.
@@ -608,31 +611,11 @@ storageOpLoop c = do
 save :: Chan StorageOp -> TVar State -> IO (Either String ())
 save ch tvar = do
   s@(State _) <- readTVarIO tvar
-  let payload = treeToCommands s -- generate optimized commands with file data
+  let payload = fsToRecipe s
   ack <- newChan
   writeChan ch (Save payload ack)
   _ <- readChan ack
   return $ Right ()
-
-treeToCommands :: State -> String
-treeToCommands (State cmds) =
-  let tree = buildTree (reverse cmds)
-   in unlines $ concatMap goRoot (tFolders tree)
-  where
-    goRoot :: Tree -> [String]
-    goRoot (Tree name fs files) =
-      let rootCmd = ["AddFolderAtRoot " ++ name]
-          fileCmds = map (\(fname, dat) -> "AddFile " ++ name ++ "/" ++ fname ++ "#" ++ dataToString dat) files
-          subfolderCmds = concatMap (goSub name) fs
-       in rootCmd ++ subfolderCmds ++ fileCmds
-
-    goSub :: String -> Tree -> [String]
-    goSub path (Tree name fs files) =
-      let currentPath = path ++ "/" ++ name
-          folderCmd = ["AddFolder " ++ path ++ " " ++ name]
-          fileCmds = map (\(fname, fdata) -> "AddFile " ++ currentPath ++ " " ++ fname ++ "#" ++ dataToString fdata) files
-          subfolderCmds = concatMap (goSub currentPath) fs
-       in folderCmd ++ subfolderCmds ++ fileCmds
 
 -- | This function will be called on program start
 -- File reads must be performed through `Chan StorageOp`

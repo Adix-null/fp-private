@@ -186,7 +186,8 @@ data Command
   | AddFolder Path AlphanumStr -- <AddFolder> ::= "AddFolder " <path> " " <alphanumstr>
   | MoveFolder Path Path -- <MoveFolder> ::= "MoveFolder " <path> " " <path>
   | DeleteFolder Path -- <DeleteFolder> ::= "DeleteFolder " <path>
-  | DumpFS
+  | AddFolderAtRoot AlphanumStr -- <AddFolderAtRoot> ::= "AddFolderAtRoot " <AlphanumStr>
+  | PrintFS
   deriving (Show)
 
 stringToAlphanumStr :: String -> AlphanumStr
@@ -233,5 +234,6 @@ examples =
     DeleteFile (stringToPath "path/from") (Name (stringToAlphanumStr "3m") Txt),
     AddFolder (stringToPath "x/y/z") (stringToAlphanumStr "Fold9Name"),
     MoveFolder (stringToPath "path/from") (stringToPath "f1/f2"),
-    DeleteFolder (stringToPath "path/from")
+    DeleteFolder (stringToPath "path/from"),
+    AddFolderAtRoot (stringToAlphanumStr "root")
   ]

@@ -298,11 +298,25 @@ parseDeleteFolder =
     )
     (and3 (keyword "DeleteFolder") ws parsePath)
 
+parseAddFolderAtRoot :: Parser Lib1.Command
+parseAddFolderAtRoot =
+  pmap
+    ( \(_, _ws1, folderNameStr) ->
+        Lib1.AddFolderAtRoot (Lib1.stringToAlphanumStr folderNameStr)
+    )
+    (and3 (keyword "AddFolderAtRoot") ws parseAlphaNumStr)
+
 parseDump :: Parser Lib1.Command
 parseDump =
   pmap
     (\(_, _, dumpable) -> Lib1.Dump dumpable)
     (and3 (keyword "Dump") ws parseDumpable)
+
+parsePrintFS :: Parser Lib1.Command
+parsePrintFS =
+  pmap
+    (const Lib1.PrintFS)
+    (keyword "PrintFS")
 
 requireEnd :: Parser ()
 requireEnd input
@@ -322,6 +336,8 @@ parseCommand =
       `orElse` parseAddFolder
       `orElse` parseMoveFolder
       `orElse` parseDeleteFolder
+      `orElse` parseAddFolderAtRoot
+      `orElse` parsePrintFS
       `orElse` parseDump
       `orElse` parseNotImplemented
   )
@@ -339,13 +355,14 @@ class ToCliCommand a where
 -- use "deriving Show" only.
 instance ToCliCommand Lib1.Command where
   toCliCommand (Lib1.Dump d) = "Dump " ++ show d
-  toCliCommand Lib1.DumpFS = "DumpFS"
+  toCliCommand Lib1.PrintFS = "PrintFS"
   toCliCommand (Lib1.AddFile path file) = "AddFile " ++ showPath path ++ " " ++ showFile file
   toCliCommand (Lib1.MoveFile from to fname) = "MoveFile " ++ showPath from ++ " " ++ showPath to ++ " " ++ showName fname
   toCliCommand (Lib1.DeleteFile path fname) = "DeleteFile " ++ showPath path ++ " " ++ showName fname
   toCliCommand (Lib1.AddFolder path folderName) = "AddFolder " ++ showPath path ++ " " ++ showAlphanumStr folderName
   toCliCommand (Lib1.MoveFolder from to) = "MoveFolder " ++ showPath from ++ " " ++ showPath to
   toCliCommand (Lib1.DeleteFolder path) = "DeleteFolder " ++ showPath path
+  toCliCommand (Lib1.AddFolderAtRoot folderName) = "AddFolderAtRoot " ++ showAlphanumStr folderName
 
 -- Helper functions to show components
 showFile :: Lib1.File -> String
@@ -416,5 +433,7 @@ instance Eq Lib1.Command where
   Lib1.AddFolder pf1 fdn1 == Lib1.AddFolder pf2 fdn2 = pf1 == pf2 && fdn1 == fdn2
   Lib1.MoveFolder pf1 pt1 == Lib1.MoveFolder pf2 pt2 = pf1 == pf2 && pt1 == pt2
   Lib1.DeleteFolder pf1 == Lib1.DeleteFolder pf2 = pf1 == pf2
+  Lib1.AddFolderAtRoot fdn1 == Lib1.AddFolderAtRoot fdn2 = fdn1 == fdn2
   Lib1.Dump e1 == Lib1.Dump e2 = e1 == e2
+  Lib1.PrintFS == Lib1.PrintFS = True
   _ == _ = False

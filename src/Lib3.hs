@@ -373,12 +373,12 @@ commandKeys cmd = case cmd of
   Lib1.AddFile path (Lib1.File (Lib1.Name an _ext) _dat) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
   Lib1.MoveFile from to (Lib1.Name an _ext) -> ["file:" ++ showPath from ++ "/" ++ showAlphanumStr an, "file:" ++ showPath to ++ "/" ++ showAlphanumStr an]
   Lib1.DeleteFile path (Lib1.Name an _ext) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
-  Lib1.AddFolder path _name -> ["folder:" ++ showPath path]
+  Lib1.AddFolder path nameStr -> ["folder:" ++ showPath path ++ "/" ++ showAlphanumStr nameStr]
   Lib1.MoveFolder from to -> ["folder:" ++ showPath from, "folder:" ++ showPath to]
   Lib1.DeleteFolder path -> ["folder:" ++ showPath path]
-  Lib1.AddFolderAtRoot folderName -> ["folder:" ++ showAlphanumStr folderName]
+  Lib1.AddFolderAtRoot nameStr -> ["folder:/" ++ showAlphanumStr nameStr]
   Lib1.Dump _ -> ["dump"]
-  Lib1.PrintFS -> ["dumpFS"]
+  Lib1.PrintFS -> ["PrintFS"]
 
 -- state and command file storage
 
@@ -399,7 +399,7 @@ computeNextState (State old) cmd =
   where
     intersect a b = [x | x <- a, x `elem` b]
 
--- In-memory file system visual representation as tree
+-- In-memory file system representation
 data Tree = Tree
   { tName :: String,
     tFolders :: [Tree],
@@ -499,20 +499,23 @@ removeFileAtWithData (seg : segs) fname (Tree n fs f) =
       (child', removed, dat) = removeFileAtWithData segs fname child
    in (Tree n (child' : rest) f, removed, dat)
 
-removeFileAt :: [String] -> String -> Tree -> (Tree, Bool)
-removeFileAt [] fname (Tree n fs f) =
-  if any ((== fname) . fst) f then (Tree n fs (filter ((/= fname) . fst) f), True) else (Tree n fs f, False)
-removeFileAt (seg : segs) fname (Tree n fs f) =
+removeFileAt :: [String] -> String -> String -> Tree -> (Tree, Bool)
+removeFileAt [] base ext (Tree n fs f) =
+  let fullName = base ++ "." ++ ext
+      filtered = filter (\(fname, _) -> fname /= fullName) f
+      removed = length filtered < length f
+   in (Tree n fs filtered, removed)
+removeFileAt (seg : segs) base ext (Tree n fs f) =
   let (child, rest) = findOrCreate seg fs
-      (child', removed) = removeFileAt segs fname child
+      (child', removed) = removeFileAt segs base ext child
       fs' = child' : rest
    in (Tree n fs' f, removed)
 
 applyToTree :: Tree -> Lib1.Command -> Tree
 applyToTree t cmd = case cmd of
   Lib1.AddFile path (Lib1.File name dat) -> insertFileAt (pathToSegments path) (showName name, dat) t
-  Lib1.MoveFile from to name -> moveFile (pathToSegments from) (pathToSegments to) (showName name) t
-  Lib1.DeleteFile from name -> fst $ removeFileAt (pathToSegments from) (showName name) t
+  Lib1.MoveFile from to (Lib1.Name base ext) -> moveFile (pathToSegments from) (pathToSegments to) (showAlphanumStr base ++ "." ++ show ext) t
+  Lib1.DeleteFile from (Lib1.Name base ext) -> fst $ removeFileAt (pathToSegments from) (showAlphanumStr base) ("." ++ show ext) t
   Lib1.AddFolder path nameStr -> insertFolderAt (pathToSegments path) (showAlphanumStr nameStr) t
   Lib1.MoveFolder from to -> moveFolder (pathToSegments from) (pathToSegments to) t
   Lib1.DeleteFolder path -> removeFolderAt (pathToSegments path) t
@@ -550,7 +553,7 @@ fsToRecipe (State cmds) =
     goRoot :: Tree -> [String]
     goRoot (Tree name fs files) =
       let rootCmd = ["AddFolderAtRoot " ++ name]
-          fileCmds = map (\(fname, dat) -> "AddFile " ++ name ++ "/" ++ fname ++ "#" ++ dataToString dat) files
+          fileCmds = map (\(fname, dat) -> "AddFile " ++ name ++ " " ++ fname ++ "#" ++ dataToString dat) files
           subfolderCmds = concatMap (goSub name) fs
        in rootCmd ++ subfolderCmds ++ fileCmds
 

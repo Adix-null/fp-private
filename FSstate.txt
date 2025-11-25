@@ -1,4 +1,17 @@
+AddFolderAtRoot x
+AddFolder x x1
+AddFolder x/x1 x2
+AddFolder x/x1/x2 x3
+AddFolderAtRoot m
+AddFolder m m1
+AddFolder m/m1 m2
+AddFolder m/m1/m2 m3
 AddFolderAtRoot f
-AddFolder f y
-AddFolder f/y r
-AddFile f g.txt#4
+AddFolder f t
+AddFile f r.txt#!@
+AddFile f r1.txt#!@webewbfef
+AddFolderAtRoot t1
+AddFolder t1 t2
+AddFolderAtRoot t
+AddFolder t r
+AddFolder t t1

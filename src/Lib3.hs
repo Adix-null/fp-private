@@ -112,18 +112,19 @@ parseFile :: Parser Lib1.File
 parseFile = (\name _ dat -> Lib1.File name dat) <$> parseName <*> keyword "#" <*> parseData
 
 -- path /
+-- parsePath := parseAlphaNumStr / parsePath | parseAlphaNumStr
 parsePath :: Parser Lib1.Path
-parsePath = Parser $ \input ->
-  case runParser parseAlphaNumStr input of
-    Left e -> Left e
-    Right (seg, rest) ->
-      let alphanum = Lib1.stringToAlphanumStr seg
-       in case rest of
-            ('/' : r) ->
-              case runParser parsePath r of
-                Left e2 -> Left e2
-                Right (p, remaining) -> Right (Lib1.RecPath alphanum p, remaining)
-            _ -> Right (Lib1.SinglePath alphanum, rest)
+parsePath =
+  parseSinglePath <|> parseRecPath
+  where
+    parseSinglePath =
+      Lib1.SinglePath . Lib1.stringToAlphanumStr <$> parseAlphaNumStr
+
+    parseRecPath =
+      (\seg _ rest -> Lib1.RecPath (Lib1.stringToAlphanumStr seg) rest)
+        <$> parseAlphaNumStr
+        <*> keyword "/"
+        <*> parsePath
 
 -- <alphanumstr> "." <extension>
 parseName :: Parser Lib1.Name
@@ -596,10 +597,8 @@ storageOpLoop c = do
   op <- readChan c
   case op of
     Save content ack -> do
-      _res <- try (writeFile fileName content) :: IO (Either SomeException ())
-      case _res of
-        Left _ -> writeChan ack ()
-        Right () -> writeChan ack ()
+      writeFile fileName content
+      writeChan ack ()
       storageOpLoop c
     Load resp -> do
       eres <- try (readFile fileName) :: IO (Either SomeException String)

@@ -115,7 +115,7 @@ parseFile = (\name _ dat -> Lib1.File name dat) <$> parseName <*> keyword "#" <*
 -- parsePath := parseAlphaNumStr / parsePath | parseAlphaNumStr
 parsePath :: Parser Lib1.Path
 parsePath =
-  parseSinglePath <|> parseRecPath
+  parseRecPath <|> parseSinglePath
   where
     parseSinglePath =
       Lib1.SinglePath . Lib1.stringToAlphanumStr <$> parseAlphaNumStr
@@ -274,7 +274,7 @@ parsePrintFS = Lib1.PrintFS <$ keyword "PrintFS"
 
 requireEnd :: Parser ()
 requireEnd = Parser $ \input ->
-  if all (`elem` [' ', '\t']) input
+  if null input || all (`elem` [' ', '\t', '\n', '\r']) input
     then Right ((), "")
     else Left $ "Whitespace at the end required: " ++ show input
 

@@ -14,6 +14,7 @@ import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (isPrefixOf)
 import qualified Lib1
 import Test.QuickCheck (Arbitrary, Gen, arbitrary)
+import Test.QuickCheck.Gen
 
 type ErrorMsg = String
 
@@ -157,7 +158,7 @@ parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
 -- path /
 parsePath :: Parser Lib1.Path
 parsePath =
-  parseSinglePath <|> parseRecPath
+  parseRecPath <|> parseSinglePath
   where
     parseSinglePath =
       Lib1.SinglePath . Lib1.stringToAlphanumStr <$> parseAlphaNumStr
@@ -257,4 +258,76 @@ requireEnd = ExceptT $ state $ \input ->
 -- | This generates arbitrary (a.k.a random) commands for tests.
 instance Arbitrary Lib1.Command where
   arbitrary :: Gen Lib1.Command
-  arbitrary = error "Implement me"
+  arbitrary =
+    oneof
+      [ Lib1.AddFile <$> randomPath <*> randomFile,
+        Lib1.MoveFile <$> randomPath <*> randomPath <*> randomName,
+        Lib1.DeleteFile <$> randomPath <*> randomName,
+        Lib1.AddFolder <$> randomPath <*> randomAlphaNumStr,
+        Lib1.MoveFolder <$> randomPath <*> randomPath,
+        Lib1.DeleteFolder <$> randomPath,
+        Lib1.AddFolderAtRoot <$> randomAlphaNumStr,
+        pure (Lib1.Dump Lib1.Examples),
+        pure Lib1.PrintFS
+      ]
+    where
+      randomPath :: Gen Lib1.Path
+      randomPath =
+        oneof
+          [ Lib1.SinglePath <$> randomAlphaNumStr,
+            Lib1.RecPath <$> randomAlphaNumStr <*> randomPath
+          ]
+      randomFile :: Gen Lib1.File
+      randomFile = Lib1.File <$> randomName <*> randomData
+
+      randomName :: Gen Lib1.Name
+      randomName = Lib1.Name <$> randomAlphaNumStr <*> elements (map snd Lib1.extensions)
+
+      randomAlphaNumStr :: Gen Lib1.AlphanumStr
+      randomAlphaNumStr = Lib1.stringToAlphanumStr <$> listOf1 (elements (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9']))
+
+      randomData :: Gen Lib1.Data
+      randomData = sized $ \n ->
+        if n <= 0
+          then Lib1.SingleASCII <$> randomASCII
+          else do
+            _ <- choose (0, n - 1)
+            Lib1.RecASCII <$> randomASCII <*> randomData
+
+      randomASCII :: Gen Lib1.ASCII
+      randomASCII =
+        oneof
+          [ Lib1.Alphanum . Lib1.Upper <$> elements ['A' .. 'Z'],
+            Lib1.Alphanum . Lib1.Lower <$> elements ['a' .. 'z'],
+            Lib1.Alphanum . Lib1.Digit <$> elements ['0' .. '9'],
+            elements
+              [ Lib1.Symbol Lib1.SymExclam,
+                Lib1.Symbol Lib1.SymQuote,
+                Lib1.Symbol Lib1.SymDollar,
+                Lib1.Symbol Lib1.SymPercent,
+                Lib1.Symbol Lib1.SymAmpersand,
+                Lib1.Symbol Lib1.SymApostrophe,
+                Lib1.Symbol Lib1.SymLParen,
+                Lib1.Symbol Lib1.SymRParen,
+                Lib1.Symbol Lib1.SymAsterisk,
+                Lib1.Symbol Lib1.SymPlus,
+                Lib1.Symbol Lib1.SymComma,
+                Lib1.Symbol Lib1.SymMinus,
+                Lib1.Symbol Lib1.SymDot,
+                Lib1.Symbol Lib1.SymColon,
+                Lib1.Symbol Lib1.SymSemicolon,
+                Lib1.Symbol Lib1.SymLt,
+                Lib1.Symbol Lib1.SymEq,
+                Lib1.Symbol Lib1.SymGt,
+                Lib1.Symbol Lib1.SymQMark,
+                Lib1.Symbol Lib1.SymAt,
+                Lib1.Symbol Lib1.SymBackslash,
+                Lib1.Symbol Lib1.SymCaret,
+                Lib1.Symbol Lib1.SymUnderscore,
+                Lib1.Symbol Lib1.SymBacktick,
+                Lib1.Symbol Lib1.SymLCurly,
+                Lib1.Symbol Lib1.SymPipe,
+                Lib1.Symbol Lib1.SymRCurly,
+                Lib1.Symbol Lib1.SymTilde
+              ]
+          ]

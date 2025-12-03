@@ -227,9 +227,8 @@ stringToPath s =
 examples :: [Command]
 examples =
   [ Dump Examples,
-    AddFile
-      (RecPath (Single (Lower 'a')) (SinglePath (Rec (Lower 'b') (Single (Digit '1')))))
-      (File (Name (Rec (Upper 'W') (Single (Upper 'S'))) Exe) (RecASCII (Alphanum (Upper 'X')) (RecASCII (Symbol SymExclam) (SingleASCII (Alphanum (Lower 'p')))))),
+    PrintFS,
+    AddFile (RecPath (Single (Lower 'a')) (SinglePath (Rec (Lower 'b') (Single (Digit '1'))))) (File (Name (Rec (Upper 'W') (Single (Upper 'S'))) Exe) (RecASCII (Alphanum (Upper 'X')) (RecASCII (Symbol SymExclam) (SingleASCII (Alphanum (Lower 'p')))))),
     MoveFile (stringToPath "0/YC") (stringToPath "RV/c9") (Name (stringToAlphanumStr "3") Html),
     DeleteFile (stringToPath "path/from") (Name (stringToAlphanumStr "3m") Txt),
     AddFolder (stringToPath "x/y/z") (stringToAlphanumStr "Fold9Name"),

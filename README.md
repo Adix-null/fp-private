@@ -1,4 +1,11 @@
 ## State persistence
+
+To launch the server, execute
+```stack run fp2025-server```
+
+To make a request with the client, run 
+```stack run fp2025-client```
+
 My structure is a filesystem, so the only 2 (3) commands necessary for creating the state are AddFile and AddFolder (Also AddFolderAtRoot because AddFolder takes 2 args). \
 The in memory state of the filesystem is read, and the needed command list is generated, it's not just a history of cli inputs. \
 I've also created command PrintFS that prints the filesystem in a tree visualization, so for example this cmd list

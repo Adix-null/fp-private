@@ -75,6 +75,34 @@ executables:
     - repline
     - stm
     - async
+  fp2025-server:
+    main: Main.hs
+    source-dirs: app4/server
+    ghc-options:
+      - -rtsopts
+    dependencies:
+      - fp2025
+      - scotty
+      - aeson
+      - text
+      - http-types
+      - wai-extra
+      - async
+      - stm
+  fp2025-client:
+    main: Main.hs
+    source-dirs: app4/client
+    ghc-options:
+      - -rtsopts
+    dependencies:
+      - fp2025
+      - http-client
+      - http-client-tls
+      - http-conduit
+      - http-types
+      - bytestring
+      - aeson
+      - text
 
 tests:
   fp2024-test:

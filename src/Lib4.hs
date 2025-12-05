@@ -8,12 +8,12 @@
 module Lib4 where
 
 import Control.Applicative (Alternative (some, (<|>)))
-import Control.Monad.Trans.Except (ExceptT (ExceptT), throwE)
+import Control.Monad.Trans.Except (ExceptT (ExceptT))
 import Control.Monad.Trans.State.Strict (State, state)
 import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
 import Data.List (isPrefixOf)
 import qualified Lib1
-import Test.QuickCheck (Arbitrary, Gen, arbitrary)
+import Test.QuickCheck (Arbitrary, arbitrary)
 import Test.QuickCheck.Gen
 
 type ErrorMsg = String

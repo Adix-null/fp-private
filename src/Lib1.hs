@@ -1,3 +1,4 @@
+{-# LANGUAGE InstanceSigs #-}
 module Lib1
   ( examples,
     Command (..),
@@ -189,6 +190,19 @@ data Command
   | AddFolderAtRoot AlphanumStr -- <AddFolderAtRoot> ::= "AddFolderAtRoot " <AlphanumStr>
   | PrintFS
   deriving (Show)
+
+instance Eq Lib1.Command where
+  (==) :: Command -> Command -> Bool
+  Lib1.AddFile pf1 d1 == Lib1.AddFile pf2 d2 = pf1 == pf2 && d1 == d2
+  Lib1.MoveFile pf1 pt1 fln1 == Lib1.MoveFile pf2 pt2 fln2 = pf1 == pf2 && pt1 == pt2 && fln1 == fln2
+  Lib1.DeleteFile pf1 fln1 == Lib1.DeleteFile pf2 fln2 = pf1 == pf2 && fln1 == fln2
+  Lib1.AddFolder pf1 fdn1 == Lib1.AddFolder pf2 fdn2 = pf1 == pf2 && fdn1 == fdn2
+  Lib1.MoveFolder pf1 pt1 == Lib1.MoveFolder pf2 pt2 = pf1 == pf2 && pt1 == pt2
+  Lib1.DeleteFolder pf1 == Lib1.DeleteFolder pf2 = pf1 == pf2
+  Lib1.AddFolderAtRoot fdn1 == Lib1.AddFolderAtRoot fdn2 = fdn1 == fdn2
+  Lib1.Dump e1 == Lib1.Dump e2 = e1 == e2
+  Lib1.PrintFS == Lib1.PrintFS = True
+  _ == _ = False
 
 stringToAlphanumStr :: String -> AlphanumStr
 stringToAlphanumStr ch =

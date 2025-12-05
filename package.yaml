@@ -44,6 +44,10 @@ library:
     - strict
     - transformers
     - async
+    - aeson
+    - bytestring
+    - text
+    - mtl
   when:
   - condition: false
     other-modules: Paths_fp2025
@@ -101,6 +105,15 @@ executables:
       - http-conduit
       - http-types
       - bytestring
+      - aeson
+      - text
+  fp2025-local:
+    main: Main.hs
+    source-dirs: app4/local
+    ghc-options: -rtsopts
+    build-depends:
+      - fp2025
+      - transformers
       - aeson
       - text
 

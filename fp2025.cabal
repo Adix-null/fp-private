@@ -132,6 +132,7 @@ executable fp2025-server
     , scotty
     , stm
     , text
+    , transformers
     , wai-extra
   default-language: Haskell2010
 

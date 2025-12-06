@@ -89,6 +89,7 @@ executables:
       - scotty
       - aeson
       - text
+      - transformers
       - http-types
       - wai-extra
       - async

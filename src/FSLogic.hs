@@ -15,6 +15,38 @@ import Lib4 ( Parser, parseCommand, Input, ErrorMsg )
 import Control.Monad.Trans.Except (runExceptT)
 import Control.Monad.Trans.State.Strict (runState)
 
+runParser :: Parser a -> Input -> Either ErrorMsg a
+runParser p input =
+  case runState (runExceptT p) input of
+    (Left e, _) -> Left e
+    (Right v, _) -> Right v
+
+newtype FSState = FSState
+  { unFS :: [Command]
+  }
+  deriving (Show)
+
+instance Eq FSState where
+  (==) :: FSState -> FSState -> Bool
+  (FSState cmds1) == (FSState cmds2) = cmds1 == cmds2
+
+
+data Tree = Tree
+  { tName :: String,
+    tFolders :: [Tree],
+    tFiles :: [(String, Lib1.Data)]
+  }
+  deriving (Show, Eq)
+
+emptyFS :: FSState
+emptyFS = FSState []
+
+emptyTree :: Tree
+emptyTree = Tree "" [] []
+
+buildTree :: [Lib1.Command] -> Tree
+buildTree = foldl applyToTree emptyTree
+
 -- boilerplate converters
 dataToString :: Lib1.Data -> String
 dataToString (Lib1.SingleASCII a) = [asciiToChar a]
@@ -77,39 +109,6 @@ showAzAZ09 :: Lib1.AzAZ09 -> String
 showAzAZ09 (Lib1.Lower c) = [c]
 showAzAZ09 (Lib1.Upper c) = [c]
 showAzAZ09 (Lib1.Digit c) = [c]
-
-
-runParser :: Parser a -> Input -> Either ErrorMsg a
-runParser p input =
-  case runState (runExceptT p) input of
-    (Left e, _) -> Left e
-    (Right v, _) -> Right v
-
-newtype FSState = FSState
-  { unFS :: [Command]
-  }
-  deriving (Show)
-
-instance Eq FSState where
-  (==) :: FSState -> FSState -> Bool
-  (FSState cmds1) == (FSState cmds2) = cmds1 == cmds2
-
-
-data Tree = Tree
-  { tName :: String,
-    tFolders :: [Tree],
-    tFiles :: [(String, Lib1.Data)]
-  }
-  deriving (Show, Eq)
-
-emptyFS :: FSState
-emptyFS = FSState []
-
-emptyTree :: Tree
-emptyTree = Tree "" [] []
-
-buildTree :: [Lib1.Command] -> Tree
-buildTree = foldl applyToTree emptyTree
 
 -- functions to logically change state
 pathToSegments :: Lib1.Path -> [String]

@@ -1,6 +1,7 @@
 module Main where
 
 import Control.Monad.Trans.State.Strict
+import Control.Monad.IO.Class
 import FSLogic
 import Lib4
 import StateInterpreter
@@ -15,5 +16,9 @@ loop :: StateT FSState IO ()
 loop = do
   line <- liftIO getLine
   case runParser parseCommand line of
-    Left err -> liftIO (putStrLn err) >> loop
-    Right (cmd, _) -> runCommand cmd >> loop
+    Left err -> do
+      liftIO (putStrLn ("Parse error: " ++ err))
+      loop
+    Right cmd -> do
+      runCommand cmd
+      loop

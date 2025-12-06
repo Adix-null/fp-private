@@ -10,11 +10,11 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 main :: IO ()
 main = do
   let request = setRequestMethod "POST"
-              $ setRequestPath "/test"
+              $ setRequestPath "/cmd"
               $ setRequestHost "localhost"
               $ setRequestPort 3000
               $ setRequestSecure False
-              $ setRequestBodyJSON (object ["test" .= True])
+              $ setRequestBodyJSON (object ["cmd" .= ("AddFolderAtRoot f1 " :: String)])
               $ defaultRequest
 
   response <- httpLBS request

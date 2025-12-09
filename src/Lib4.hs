@@ -11,16 +11,26 @@ import Control.Applicative (Alternative (some, (<|>)))
 import Control.Monad.Trans.Except (ExceptT (ExceptT))
 import Control.Monad.Trans.State.Strict (State, state)
 import Data.Char (isAlpha, isAsciiLower, isAsciiUpper, isDigit)
+import Control.Monad.Trans.State.Strict (runState)
 import Data.List (isPrefixOf)
+import Control.Monad.Trans.Except (runExceptT)
 import qualified Lib1
 import Test.QuickCheck (Arbitrary, arbitrary)
 import Test.QuickCheck.Gen
+import Debug.Trace
 
 type ErrorMsg = String
 
 type Input = String
 
 type Parser = ExceptT ErrorMsg (State Input)
+
+try :: Parser a -> Parser a
+try p = ExceptT $ state $ \s ->
+  case runState (runExceptT p) s of
+    (Left _, _) -> (Left "try failed", s) -- reset state on fail
+    r -> r
+
 
 -- | Parses user's input.
 -- Yes, yes, yes. This is pretty much the same parser as in Lib3
@@ -29,12 +39,12 @@ type Parser = ExceptT ErrorMsg (State Input)
 parseCommand :: Parser Lib1.Command
 parseCommand =
   ( parseAddFile
+      <|> parseAddFolderAtRoot
       <|> parseMoveFile
       <|> parseDeleteFile
       <|> parseAddFolder
       <|> parseMoveFolder
       <|> parseDeleteFolder
-      <|> parseAddFolderAtRoot
       <|> parseDump
       <|> parsePrintFS
       <|> parseNotImplemented
@@ -117,9 +127,11 @@ parseAlphaNumStr = some parseAlphaNum
 
 keyword :: String -> Parser String
 keyword prefix = ExceptT $ state $ \input ->
-  if prefix `isPrefixOf` input
-    then (Right (drop (length prefix) input), input)
-    else (Left $ prefix ++ " is expected, got " ++ take (min 30 (length input)) input, input)
+  -- traceShow ("keyword trying: " ++ show prefix ++ " on input: " ++ show input) $
+    if prefix `isPrefixOf` input
+      then (Right prefix, drop (length prefix) input)
+      else (Left $ "Expected: " ++ prefix ++ ", Got: " ++ take (min 30 (length input)) input ++ "; ", input)
+
 
 whitespace :: Parser String
 whitespace = concat <$> some (keyword " " <|> keyword "\t")
@@ -157,8 +169,8 @@ parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
 
 -- path /
 parsePath :: Parser Lib1.Path
-parsePath =
-  parseRecPath <|> parseSinglePath
+parsePath = 
+  try parseRecPath <|> parseSinglePath
   where
     parseSinglePath =
       Lib1.SinglePath . Lib1.stringToAlphanumStr <$> parseAlphaNumStr
@@ -230,9 +242,7 @@ parseDeleteFolder =
 
 parseAddFolderAtRoot :: Parser Lib1.Command
 parseAddFolderAtRoot =
-  ( \_ _ folderNameStr ->
-      Lib1.AddFolderAtRoot (Lib1.stringToAlphanumStr folderNameStr)
-  )
+  (\_ _ folderNameStr -> Lib1.AddFolderAtRoot (Lib1.stringToAlphanumStr folderNameStr))
     <$> keyword "AddFolderAtRoot"
     <*> whitespace
     <*> parseAlphaNumStr
@@ -251,9 +261,10 @@ parseNotImplemented = ExceptT $ state $ \_ -> (Left "Not implemented", [])
 
 requireEnd :: Parser ()
 requireEnd = ExceptT $ state $ \input ->
-  if all (`elem` [' ', '\t']) input
+  if not (any (`notElem` [' ', '\t']) input)
     then (Right (), [])
-    else (Left $ "Whitespace at the end required: " ++ show input, input)
+    else (Left $ "Unexpected trailing characters: " ++ show input, input)
+
 
 -- | This generates arbitrary (a.k.a random) commands for tests.
 instance Arbitrary Lib1.Command where

@@ -108,15 +108,6 @@ executables:
       - bytestring
       - aeson
       - text
-  fp2025-local:
-    main: Main.hs
-    source-dirs: app4/local
-    ghc-options: -rtsopts
-    build-depends:
-      - fp2025
-      - transformers
-      - aeson
-      - text
 
 tests:
   fp2024-test:

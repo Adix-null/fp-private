@@ -12,7 +12,6 @@ import Data.Aeson.Types (parseMaybe)
 import qualified Data.Text as T
 import qualified Data.Text.Lazy as TL
 import FSLogic
-import StateInterpreter
 import Control.Monad.IO.Class
 import Control.Monad.Trans.State.Strict
 import Lib4 (parseCommand)
@@ -30,7 +29,7 @@ trim = T.unpack . T.strip . T.pack
 
 main :: IO ()
 main = do
-  stRef <- newIORef =<< loadState stateFileName -- mutable FSState
+  stRef <- newIORef =<< loadState stateFileName
   scotty 3000 $ do
     post "/cmd" $ do
       body <- jsonData `rescue` (\(_ :: SomeException) -> return $ Object mempty)

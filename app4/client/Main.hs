@@ -9,13 +9,14 @@ import qualified Data.ByteString.Lazy.Char8 as BL
 
 main :: IO ()
 main = do
-  let request = setRequestMethod "POST"
-              $ setRequestPath "/cmd"
-              $ setRequestHost "localhost"
-              $ setRequestPort 3000
-              $ setRequestSecure False
-              $ setRequestBodyJSON (object ["cmd" .= ("AddFile f1/f2 mp.exe#123$%" :: String)])
-              $ defaultRequest
+  let request = 
+          setRequestMethod "POST"
+        $ setRequestPath "/cmd"
+        $ setRequestHost "localhost"
+        $ setRequestPort 3000
+        $ setRequestSecure False
+        $ setRequestBodyJSON (object ["cmd" .= ("PrintFS" :: String)])
+        $ defaultRequest
 
   response <- httpLBS request
   putStrLn $ "Status code: " ++ show (getResponseStatusCode response)

@@ -133,7 +133,6 @@ keyword prefix = ExceptT $ state $ \input ->
       then (Right prefix, drop (length prefix) input)
       else (Left $ "Expected: " ++ prefix ++ ", Got: " ++ take (min 30 (length input)) input ++ "; ", input)
 
-
 whitespace :: Parser String
 whitespace = concat <$> some (keyword " " <|> keyword "\t")
 
@@ -274,12 +273,12 @@ instance Arbitrary Lib1.Command where
   arbitrary =
     oneof
       [ 
-        Lib1.AddFile <$> randomPath 2 <*> randomFile,
-        Lib1.MoveFile <$> randomPath 2 <*> randomPath 2 <*> randomName,
-        Lib1.DeleteFile <$> randomPath 2 <*> randomName,
-        Lib1.AddFolder <$> randomPath 2 <*> randomAlphaNumStr,
-        Lib1.MoveFolder <$> randomPath 2 <*> randomPath 2,
-        Lib1.DeleteFolder <$> randomPath 2,
+        Lib1.AddFile <$> randomPath 3 <*> randomFile,
+        Lib1.MoveFile <$> randomPath 3 <*> randomPath 3 <*> randomName,
+        Lib1.DeleteFile <$> randomPath 3 <*> randomName,
+        Lib1.AddFolder <$> randomPath 3 <*> randomAlphaNumStr,
+        Lib1.MoveFolder <$> randomPath 3 <*> randomPath 3,
+        Lib1.DeleteFolder <$> randomPath 3,
         Lib1.AddFolderAtRoot <$> randomAlphaNumStr,
         pure (Lib1.Dump Lib1.Examples),
         pure Lib1.PrintFS

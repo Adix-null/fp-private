@@ -1,25 +1,13 @@
 {-# LANGUAGE InstanceSigs #-}
 module FSLogic where
-
-import Lib1
-    ( ASCII(..),
-      AlphanumStr(..),
-      AzAZ09(..),
-      Command(..),
-      Data(..),
-      File(File),
-      Name(..),
-      Path(..),
-      Symbol(..) )
+      
 import Lib4 ( Parser, parseCommand, Input, ErrorMsg ) 
 import Control.Monad.Trans.Except (runExceptT)
-import Control.Monad.Trans.State.Strict (runState)
+import Control.Monad.State.Strict
+import Data.Aeson (Value, object, (.=))
+import Data.Aeson.Key (fromString)
+import Lib1
 
-runParser :: Parser a -> Input -> Either ErrorMsg a
-runParser p input =
-  case runState (runExceptT p) input of
-    (Left e, _) -> Left e
-    (Right v, _) -> Right v
 
 newtype FSState = FSState
   { unFS :: [Command]
@@ -29,6 +17,25 @@ newtype FSState = FSState
 instance Eq FSState where
   (==) :: FSState -> FSState -> Bool
   (FSState cmds1) == (FSState cmds2) = cmds1 == cmds2
+
+
+runParser :: Parser a -> Input -> Either ErrorMsg a
+runParser p input =
+  case runState (runExceptT p) input of
+    (Left e, _) -> Left e
+    (Right v, _) -> Right v
+
+runCommand :: Command -> StateT FSState IO Value
+runCommand cmd = case cmd of
+  PrintFS -> do
+    FSState cmds <- get
+    let tree = buildTree (reverse cmds)
+        output = unlines $ formattedTreeOtp tree
+    return $ object [fromString "output" .= output]
+  _ -> do
+    st <- get
+    put (computeNextState st cmd)
+    return $ object [fromString "status" .= ("ok" :: String)]
 
 
 data Tree = Tree
@@ -47,7 +54,7 @@ emptyTree = Tree "" [] []
 buildTree :: [Lib1.Command] -> Tree
 buildTree = foldl applyToTree emptyTree
 
--- boilerplate converters
+-- Boilerplate converters
 dataToString :: Lib1.Data -> String
 dataToString (Lib1.SingleASCII a) = [asciiToChar a]
 dataToString (Lib1.RecASCII a rest) = asciiToChar a : dataToString rest
@@ -93,7 +100,7 @@ symbolToChar s = case s of
   Lib1.SymRCurly -> '}'
   Lib1.SymTilde -> '~'
 
--- helper show functions
+-- Helper show functions
 showName :: Lib1.Name -> String
 showName (Lib1.Name an ext) = showAlphanumStr an ++ "." ++ show ext
 
@@ -110,7 +117,7 @@ showAzAZ09 (Lib1.Lower c) = [c]
 showAzAZ09 (Lib1.Upper c) = [c]
 showAzAZ09 (Lib1.Digit c) = [c]
 
--- functions to logically change state
+-- Functions to logically change state
 pathToSegments :: Lib1.Path -> [String]
 pathToSegments p = go p []
   where
@@ -211,6 +218,7 @@ removeFileAt (seg : segs) base ext (Tree n fs f) =
       fs' = child' : rest
    in (Tree n fs' f, removed)
 
+-- DSL command mapping
 applyToTree :: Tree -> Lib1.Command -> Tree
 applyToTree t cmd = case cmd of
   Lib1.AddFile path (Lib1.File name dat) -> insertFileAt (pathToSegments path) (showName name, dat) t
@@ -237,6 +245,7 @@ commandKeys cmd = case cmd of
 (&) :: b -> (b -> c) -> c
 (&) = flip ($)
 
+-- produce recipe of commands from FSState
 fsToRecipe :: FSState -> String
 fsToRecipe (FSState cmds) =
   let tree = buildTree (reverse cmds)
@@ -257,7 +266,6 @@ fsToRecipe (FSState cmds) =
           subfolderCmds = concatMap (goSub currentPath) fs
        in folderCmd ++ subfolderCmds ++ fileCmds
 
-
 -- Format tree like in bnf
 formattedTreeOtp :: Tree -> [String]
 formattedTreeOtp = go 0
@@ -271,7 +279,7 @@ formattedTreeOtp = go 0
           closing = [indent lvl ++ "]" | not (null name)]
        in ([prefix | not (null name)]) ++ folderLines ++ fileLine ++ closing
 
-
+-- Persistent file state 
 computeNextState :: FSState -> Lib1.Command -> FSState
 computeNextState (FSState old) cmd =
   let keys = commandKeys cmd

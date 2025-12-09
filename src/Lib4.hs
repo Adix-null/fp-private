@@ -4,6 +4,7 @@
 {-# OPTIONS_GHC -Wno-unrecognised-pragmas #-}
 
 {-# HLINT ignore "Use const" #-}
+{-# HLINT ignore "Use fewer imports" #-}
 
 module Lib4 where
 
@@ -161,11 +162,12 @@ parseExtension = toExt <$> parseOneOf (map fst Lib1.extensions)
   where
     toExt :: String -> Lib1.Extension
     toExt s
-      | all (`elem` ['a' .. 'z']) s =
+      | all (`elem` (['a' .. 'z'] ++ ['0' .. '9'])) s =
           case lookup s Lib1.extensions of
             Just ext -> ext
             Nothing -> error $ "Ext not in list: " ++ s
-      | otherwise = error $ "Ext must be lowercase: " ++ s
+      | otherwise = error $ "Ext must be alphanumerical: " ++ s
+
 
 -- path /
 parsePath :: Parser Lib1.Path
@@ -271,23 +273,22 @@ instance Arbitrary Lib1.Command where
   arbitrary :: Gen Lib1.Command
   arbitrary =
     oneof
-      [ Lib1.AddFile <$> randomPath <*> randomFile,
-        Lib1.MoveFile <$> randomPath <*> randomPath <*> randomName,
-        Lib1.DeleteFile <$> randomPath <*> randomName,
-        Lib1.AddFolder <$> randomPath <*> randomAlphaNumStr,
-        Lib1.MoveFolder <$> randomPath <*> randomPath,
-        Lib1.DeleteFolder <$> randomPath,
+      [ 
+        Lib1.AddFile <$> randomPath 2 <*> randomFile,
+        Lib1.MoveFile <$> randomPath 2 <*> randomPath 2 <*> randomName,
+        Lib1.DeleteFile <$> randomPath 2 <*> randomName,
+        Lib1.AddFolder <$> randomPath 2 <*> randomAlphaNumStr,
+        Lib1.MoveFolder <$> randomPath 2 <*> randomPath 2,
+        Lib1.DeleteFolder <$> randomPath 2,
         Lib1.AddFolderAtRoot <$> randomAlphaNumStr,
         pure (Lib1.Dump Lib1.Examples),
         pure Lib1.PrintFS
       ]
     where
-      randomPath :: Gen Lib1.Path
-      randomPath =
-        oneof
-          [ Lib1.SinglePath <$> randomAlphaNumStr,
-            Lib1.RecPath <$> randomAlphaNumStr <*> randomPath
-          ]
+      randomPath :: Int -> Gen Lib1.Path
+      randomPath 0 = Lib1.SinglePath <$> randomAlphaNumStr
+      randomPath n = oneof [Lib1.SinglePath <$> randomAlphaNumStr, Lib1.RecPath <$> randomAlphaNumStr <*> randomPath (n - 1)]
+      
       randomFile :: Gen Lib1.File
       randomFile = Lib1.File <$> randomName <*> randomData
 
@@ -298,12 +299,12 @@ instance Arbitrary Lib1.Command where
       randomAlphaNumStr = Lib1.stringToAlphanumStr <$> listOf1 (elements (['a' .. 'z'] ++ ['A' .. 'Z'] ++ ['0' .. '9']))
 
       randomData :: Gen Lib1.Data
-      randomData = sized $ \n ->
-        if n <= 0
-          then Lib1.SingleASCII <$> randomASCII
-          else do
-            _ <- choose (0, n - 1)
-            Lib1.RecASCII <$> randomASCII <*> randomData
+      randomData = do
+        a <- randomASCII
+        b <- randomASCII
+        c <- randomASCII
+        d <- randomASCII
+        return $ Lib1.RecASCII a (Lib1.RecASCII b (Lib1.RecASCII c (Lib1.SingleASCII d)))
 
       randomASCII :: Gen Lib1.ASCII
       randomASCII =

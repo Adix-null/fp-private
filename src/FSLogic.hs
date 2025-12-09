@@ -224,9 +224,9 @@ applyToTree t cmd = case cmd of
 
 commandKeys :: Lib1.Command -> [String]
 commandKeys cmd = case cmd of
-  Lib1.AddFile path (Lib1.File (Lib1.Name an _ext) _dat) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
-  Lib1.MoveFile from to (Lib1.Name an _ext) -> ["file:" ++ showPath from ++ "/" ++ showAlphanumStr an, "file:" ++ showPath to ++ "/" ++ showAlphanumStr an]
-  Lib1.DeleteFile path (Lib1.Name an _ext) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr an]
+  Lib1.AddFile path (Lib1.File (Lib1.Name base ext) _dat) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr base ++ "." ++ show ext]
+  Lib1.MoveFile from to (Lib1.Name base ext) -> ["file:" ++ showPath from ++ "/" ++ showAlphanumStr base ++ "." ++ show ext, "file:" ++ showPath to ++ "/" ++ showAlphanumStr base ++ "." ++ show ext]
+  Lib1.DeleteFile path (Lib1.Name base ext) -> ["file:" ++ showPath path ++ "/" ++ showAlphanumStr base ++ "." ++ show ext]
   Lib1.AddFolder path nameStr -> ["folder:" ++ showPath path ++ "/" ++ showAlphanumStr nameStr]
   Lib1.MoveFolder from to -> ["folder:" ++ showPath from, "folder:" ++ showPath to]
   Lib1.DeleteFolder path -> ["folder:" ++ showPath path]

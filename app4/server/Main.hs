@@ -6,7 +6,7 @@
 module Main where
 
 import Control.Exception (SomeException)
-import Data.Aeson
+import Data.Aeson ( Value(Object), (.:) )
 import Data.Aeson.Key (fromString)
 import Data.Aeson.Types (parseMaybe)
 import qualified Data.Text as T
@@ -20,6 +20,7 @@ import Network.HTTP.Types.Status
 import Web.Scotty
 import Data.IORef
 
+import Lib1
 
 stateFileName :: String
 stateFileName = "fs_state.txt"
@@ -38,18 +39,31 @@ main = do
           Just cmdStr -> do
             case runParser parseCommand (trim cmdStr) of
               Left err -> do
-                status status404
-                text (TL.pack $ "Parse error: " ++ err)
+                status status400
+                text (TL.pack $ "Bad Request Parse error: " ++ err)
               Right cmd -> do
                 st <- liftIO $ readIORef stRef
                 newSt <- liftIO $ execStateT (runCommand cmd) st
                 liftIO $ writeIORef stRef newSt
                 liftIO $ saveState stateFileName newSt
-                status status200
-                text "OK"
+                case cmd of
+                  PrintFS -> do
+                    setHeader "Content-Type" "text/plain"
+                    text (TL.pack $ unlines $ formattedTreeOtp (buildTree (reverse (unFS newSt))))
+                  _ -> do
+                    status $ case cmd of
+                      AddFile{} -> status201
+                      AddFolder{} -> status201
+                      AddFolderAtRoot{} -> status201
+                      MoveFile{} -> status202
+                      MoveFolder{} -> status202
+                      DeleteFile{} -> status204
+                      DeleteFolder{} -> status204
+                      _ -> status200
+                    text "Success"
           Nothing -> do
             status status404
-            text "Missing 'cmd'"
+            text "Not Found cmd"
         _ -> do
-          status status404
-          text "Invalid JSON"
+          status status400
+          text "Bad Request Invalid JSON"

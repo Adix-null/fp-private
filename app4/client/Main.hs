@@ -14,7 +14,7 @@ main = do
               $ setRequestHost "localhost"
               $ setRequestPort 3000
               $ setRequestSecure False
-              $ setRequestBodyJSON (object ["cmd" .= ("AddFolderAtRoot f1" :: String)])
+              $ setRequestBodyJSON (object ["cmd" .= ("AddFile f1/f2 mp.exe#123$%" :: String)])
               $ defaultRequest
 
   response <- httpLBS request

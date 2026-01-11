@@ -1,5 +1,2 @@
 AddFolderAtRoot f1
 AddFolder f1 f2
-AddFolder f1/f2 f3
-AddFile f1/f2 mp.exe#123$%
-AddFolderAtRoot rt

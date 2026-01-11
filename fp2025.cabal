@@ -24,6 +24,7 @@ source-repository head
 
 library
   exposed-modules:
+      DSL
       FSLogic
       Lessons.Lesson01
       Lessons.Lesson02
